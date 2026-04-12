@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/AuthContext";
 import { getItems, createItem, updateItem, deleteItem, getProjects, getActiveItems, getPlanningItems } from "@/lib/projects";
+import { syncItemToGoogle, unsyncItemFromGoogle } from "@/lib/googleSync";
 import KanbanBoard from "./KanbanBoard";
 import TableView from "./TableView";
 import TodayView from "./TodayView";
@@ -54,6 +55,16 @@ export default function ProjectHub() {
     setItems((prev) => [...newItems, ...prev]);
     setShowCreate(false);
     setCreateDefaults({});
+
+    // Sync to Google
+    if (googleAccessToken) {
+      for (const newItem of newItems) {
+        syncItemToGoogle(googleAccessToken, newItem, async (syncUpdates) => {
+          await updateItem(user.uid, newItem.id, syncUpdates);
+          setItems((prev) => prev.map((i) => i.id === newItem.id ? { ...i, ...syncUpdates } : i));
+        });
+      }
+    }
   };
 
   const handleUpdate = async (itemId, updates) => {
@@ -71,6 +82,17 @@ export default function ProjectHub() {
     }
     setItems(updatedItems);
     if (selectedItem?.id === itemId) setSelectedItem((prev) => ({ ...prev, ...updates }));
+
+    // Sync to Google
+    if (googleAccessToken) {
+      const updatedItem = updatedItems.find((i) => i.id === itemId);
+      if (updatedItem) {
+        syncItemToGoogle(googleAccessToken, updatedItem, async (syncUpdates) => {
+          await updateItem(user.uid, itemId, syncUpdates);
+          setItems((prev) => prev.map((i) => i.id === itemId ? { ...i, ...syncUpdates } : i));
+        });
+      }
+    }
   };
 
   const handleDelete = async (itemId) => {
@@ -78,6 +100,15 @@ export default function ProjectHub() {
     if (item?.type === "project") {
       const children = items.filter((i) => i.parentId === itemId);
       for (const child of children) await deleteItem(user.uid, child.id);
+    }
+    // Unsync from Google before deleting
+    if (googleAccessToken && item) {
+      await unsyncItemFromGoogle(googleAccessToken, item);
+      if (item.type === "project") {
+        for (const child of items.filter((i) => i.parentId === itemId)) {
+          await unsyncItemFromGoogle(googleAccessToken, child);
+        }
+      }
     }
     await deleteItem(user.uid, itemId);
     setItems((prev) => prev.filter((i) => i.id !== itemId && i.parentId !== itemId));

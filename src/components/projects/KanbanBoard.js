@@ -75,8 +75,8 @@ export default function KanbanBoard({ items, allItems, projects, onUpdate, onSel
   };
 
   // Action bar — done/undo + edit
-  const Actions = ({ item, isDone, extra }) => (
-    <div style={{ display: "flex", gap: 4, alignItems: "center", marginTop: 6, paddingTop: 6, borderTop: "1px solid var(--border)" }}>
+  const Actions = ({ item, isDone, extra, noBorder }) => (
+    <div style={{ display: "flex", gap: 4, alignItems: "center", marginTop: 6, paddingTop: noBorder ? 0 : 6, borderTop: noBorder ? "none" : "1px solid var(--border)" }}>
       <span style={{ flex: 1 }} />
       {isDone ? (
         <button className="btn-icon" onClick={(e) => undoDone(e, item.id)} title="Undo" style={{ padding: 2, color: "var(--text-tertiary)" }}>
@@ -152,7 +152,7 @@ export default function KanbanBoard({ items, allItems, projects, onUpdate, onSel
                             </div>
                           )}
                           <MetaRow item={item} />
-                          <Actions item={item} isDone={isDone} extra={
+                          <Actions item={item} isDone={isDone} noBorder extra={
                             <button className="btn-icon" onClick={(e) => { e.stopPropagation(); onAddSubtask(item.id); }} title="Add sub-task" style={{ padding: 2 }}>
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             </button>
