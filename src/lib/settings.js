@@ -31,9 +31,9 @@ export async function getSettings(userId) {
       return {
         ...getDefaultSettings(),
         ...data,
-        // Ensure arrays always exist
-        views: data.views || DEFAULT_VIEWS,
-        modules: data.modules || DEFAULT_MODULES,
+        // Merge views: keep user's saved views + append any NEW default views they don't have yet
+        views: mergeViews(data.views, DEFAULT_VIEWS),
+        modules: mergeModules(data.modules, DEFAULT_MODULES),
       };
     }
   } catch (e) {
@@ -51,13 +51,28 @@ export async function saveSettings(userId, settings) {
   }
 }
 
+// Merge saved views with defaults — keeps user order/labels but adds new defaults
+function mergeViews(saved, defaults) {
+  if (!saved || saved.length === 0) return defaults;
+  const savedIds = new Set(saved.map(v => v.id));
+  const newViews = defaults.filter(d => !savedIds.has(d.id));
+  return [...saved, ...newViews];
+}
+
+function mergeModules(saved, defaults) {
+  if (!saved || saved.length === 0) return defaults;
+  const savedIds = new Set(saved.map(m => m.id));
+  const newMods = defaults.filter(d => !savedIds.has(d.id));
+  return [...saved, ...newMods];
+}
+
 function getDefaultSettings() {
   return {
     views: DEFAULT_VIEWS,
     modules: DEFAULT_MODULES,
     moduleName: "Projects",
     theme: "system",
-    geminiApiKey: "", // Stored in settings for simplicity
+    geminiApiKey: "",
   };
 }
 
