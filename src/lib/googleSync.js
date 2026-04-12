@@ -272,3 +272,52 @@ export function calendarEventToItem(event) {
     source: "google",
   };
 }
+
+// Convert Google Task to Hub item format
+export function googleTaskToItem(task) {
+  return {
+    type: "task",
+    title: task.title || "Untitled Task",
+    description: task.notes || "",
+    status: task.status === "completed" ? "done" : "todo",
+    dueDate: task.due ? task.due.split("T")[0] : null,
+    completedAt: task.completed || null,
+    googleTaskId: task.id,
+    priority: "medium",
+    source: "google",
+  };
+}
+
+// ===== PULL SYNC (Google → Hub) =====
+
+export async function pullFromGoogle(accessToken) {
+  if (!accessToken) return { events: [], tasks: [] };
+
+  const results = { events: [], tasks: [] };
+
+  // Pull Calendar Events (next 30 days + past 7 days)
+  try {
+    const timeMin = new Date(Date.now() - 7 * 86400000).toISOString();
+    const timeMax = new Date(Date.now() + 30 * 86400000).toISOString();
+    const events = await getCalendarEvents(accessToken, timeMin, timeMax);
+    results.events = events
+      .filter((e) => e.status !== "cancelled")
+      .map(calendarEventToItem);
+    console.log(`[PULL] Fetched ${results.events.length} calendar events`);
+  } catch (err) {
+    console.error("[PULL] Calendar fetch error:", err.message);
+  }
+
+  // Pull Google Tasks
+  try {
+    const tasks = await getGoogleTasks(accessToken);
+    results.tasks = tasks
+      .filter((t) => t.title) // Skip empty tasks
+      .map(googleTaskToItem);
+    console.log(`[PULL] Fetched ${results.tasks.length} tasks`);
+  } catch (err) {
+    console.error("[PULL] Tasks fetch error:", err.message);
+  }
+
+  return results;
+}

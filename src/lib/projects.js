@@ -130,3 +130,29 @@ export function getPlanningItems(items) {
 export function getActiveItems(items) {
   return items.filter((i) => i.status !== "planning" && i.status !== "archived");
 }
+
+// ===== UPSERT (for pull sync) =====
+
+export async function upsertItemByGoogleId(userId, googleField, googleId, data) {
+  // Check if an item with this Google ID already exists
+  const ref = collection(db, "users", userId, ITEMS_COL);
+  const q = query(ref, where(googleField, "==", googleId));
+  const snap = await getDocs(q);
+
+  if (snap.docs.length > 0) {
+    // Update existing — only update fields the user hasn't manually changed
+    const existing = snap.docs[0];
+    const existingData = existing.data();
+    // Don't overwrite if user manually edited it more recently
+    if (existingData.source === "google" || !existingData.updatedAt || existingData.updatedAt < data.updatedAt) {
+      await updateDoc(existing.ref, { ...data, updatedAt: new Date().toISOString() });
+    }
+    return { id: existing.id, ...existingData, ...data };
+  } else {
+    // Create new
+    const newDoc = doc(ref);
+    const item = { ...data, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    await setDoc(newDoc, item);
+    return { id: newDoc.id, ...item };
+  }
+}

@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/AuthContext";
-import { getItems, createItem, updateItem, deleteItem, getProjects, getActiveItems, getPlanningItems } from "@/lib/projects";
-import { syncItemToGoogle, unsyncItemFromGoogle } from "@/lib/googleSync";
+import { getItems, createItem, updateItem, deleteItem, getProjects, getActiveItems, getPlanningItems, upsertItemByGoogleId } from "@/lib/projects";
+import { syncItemToGoogle, unsyncItemFromGoogle, pullFromGoogle } from "@/lib/googleSync";
 import { getSettings, saveSettings, getActiveViews } from "@/lib/settings";
 import KanbanBoard from "./KanbanBoard";
 import TableView from "./TableView";
@@ -12,7 +12,6 @@ import GanttTimeline from "./GanttTimeline";
 import CalendarView from "./CalendarView";
 import TaskDetailSheet from "./TaskDetailSheet";
 import CreateItemModal from "./CreateItemModal";
-import SettingsPanel from "./SettingsPanel";
 
 const VIEW_COMPONENTS = {
   today: "Today",
@@ -40,17 +39,44 @@ export default function ProjectHub() {
       const [data, s] = await Promise.all([getItems(user.uid), getSettings(user.uid)]);
       setItems(data);
       setSettings(s);
-      // Set active view to first enabled view
       const activeViews = getActiveViews(s);
       if (activeViews.length > 0 && !activeViews.find((v) => v.id === activeViewId)) {
         setActiveViewId(activeViews[0].id);
+      }
+
+      // Pull sync from Google (merge external events/tasks)
+      if (googleAccessToken) {
+        try {
+          const { events, tasks } = await pullFromGoogle(googleAccessToken);
+          const existingGoogleIds = new Set(data.map(i => i.googleCalendarEventId).filter(Boolean));
+          const existingTaskIds = new Set(data.map(i => i.googleTaskId).filter(Boolean));
+          const newItems = [];
+          for (const evt of events) {
+            if (!existingGoogleIds.has(evt.googleCalendarEventId)) {
+              const upserted = await upsertItemByGoogleId(user.uid, "googleCalendarEventId", evt.googleCalendarEventId, evt);
+              newItems.push(upserted);
+            }
+          }
+          for (const task of tasks) {
+            if (!existingTaskIds.has(task.googleTaskId)) {
+              const upserted = await upsertItemByGoogleId(user.uid, "googleTaskId", task.googleTaskId, task);
+              newItems.push(upserted);
+            }
+          }
+          if (newItems.length > 0) {
+            console.log(`[PULL] Merged ${newItems.length} items from Google`);
+            setItems(prev => [...prev, ...newItems]);
+          }
+        } catch (pullErr) {
+          console.warn("[PULL] Sync error (non-critical):", pullErr.message);
+        }
       }
     } catch (e) {
       console.error("Load error:", e);
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, googleAccessToken]);
 
   useEffect(() => { loadData(); }, [loadData]);
 

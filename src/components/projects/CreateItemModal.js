@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import RecurrencePicker from "./RecurrencePicker";
 
 const ITEM_TYPES = [
   { key: "project", label: "Project", desc: "Top-level container with sub-tasks", icon: "📁" },
@@ -27,6 +28,7 @@ export default function CreateItemModal({ projects, activeProject, defaultStatus
   const [color, setColor] = useState("#2563eb");
   const [location, setLocation] = useState("");
   const [notes, setNotes] = useState("");
+  const [recurrence, setRecurrence] = useState(null);
 
   // Project sub-tasks (inline creation)
   const [subtasks, setSubtasks] = useState([]);
@@ -77,6 +79,7 @@ export default function CreateItemModal({ projects, activeProject, defaultStatus
         location: location || "",
         notes: notes || "",
         timeBlock: type === "event" && timeBlockDate ? { date: timeBlockDate, startTime: timeBlockStart, endTime: timeBlockEnd } : null,
+        recurrence: recurrence || null,
       });
     }
   };
@@ -240,6 +243,10 @@ export default function CreateItemModal({ projects, activeProject, defaultStatus
                     <input type="time" value={timeBlockEnd} onChange={(e) => setTimeBlockEnd(e.target.value)} />
                   </div>
                 </div>
+
+              {/* Recurrence */}
+              {(type === "event" || type === "task") && (
+                <RecurrencePicker value={recurrence} onChange={setRecurrence} />
               )}
             </div>
 

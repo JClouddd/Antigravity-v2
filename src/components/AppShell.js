@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/AuthContext";
 import { useTheme } from "@/lib/theme";
 import { getSettings, getActiveModules } from "@/lib/settings";
+import { getItems, createItem, updateItem } from "@/lib/projects";
+import { syncItemToGoogle } from "@/lib/googleSync";
 import ProjectHub from "@/components/projects/ProjectHub";
 import SettingsPage from "@/components/SettingsPage";
 import GeminiWidget from "@/components/GeminiWidget";
@@ -27,17 +29,39 @@ const PAGE_COMPONENTS = {
 };
 
 export default function AppShell() {
-  const { user, logout } = useAuth();
+  const { user, logout, googleAccessToken } = useAuth();
   const [activePage, setActivePage] = useState("projects");
   const [settings, setSettings] = useState(null);
+  const [allItems, setAllItems] = useState([]);
 
   const loadSettings = useCallback(async () => {
     if (!user) return;
-    const s = await getSettings(user.uid);
+    const [s, items] = await Promise.all([getSettings(user.uid), getItems(user.uid)]);
     setSettings(s);
+    setAllItems(items);
   }, [user]);
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
+  // Refresh items periodically for Gemini context
+  useEffect(() => {
+    const interval = setInterval(() => { if (user) getItems(user.uid).then(setAllItems); }, 30000);
+    return () => clearInterval(interval);
+  }, [user]);
+
+  const handleGeminiCreate = async (data) => {
+    const item = await createItem(user.uid, data);
+    if (item && googleAccessToken) {
+      syncItemToGoogle(googleAccessToken, item, async (updates) => {
+        await updateItem(user.uid, item.id, updates);
+      });
+    }
+    setAllItems(prev => [item, ...prev]);
+  };
+
+  const handleGeminiUpdate = async (itemId, updates) => {
+    await updateItem(user.uid, itemId, updates);
+    setAllItems(prev => prev.map(i => i.id === itemId ? { ...i, ...updates } : i));
+  };
 
   const modules = getActiveModules(settings);
 
@@ -96,7 +120,7 @@ export default function AppShell() {
       </nav>
 
       {/* Gemini AI Widget — global */}
-      <GeminiWidget settings={settings} />
+      <GeminiWidget settings={settings} items={allItems} onCreateItem={handleGeminiCreate} onUpdateItem={handleGeminiUpdate} />
     </div>
   );
 }
