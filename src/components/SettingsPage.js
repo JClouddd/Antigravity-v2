@@ -222,6 +222,45 @@ export default function SettingsPage() {
               </button>
             </div>
           </div>
+          {/* AI Agent Integration */}
+          <div className="card">
+            <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>🤖 AI Agent Integration</h3>
+            <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 12 }}>
+              Allows the AI coding assistant to push implementation plans, track progress, and mark tasks complete in real-time.
+            </p>
+
+            {/* User UID */}
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "block" }}>User Token (UID)</label>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <code style={{ flex: 1, fontSize: 11, fontFamily: "monospace", background: "var(--bg-secondary)", padding: "8px 10px", borderRadius: 4, wordBreak: "break-all", color: "var(--text-primary)" }}>
+                  {user?.uid || "Loading..."}
+                </code>
+                <button className="btn btn-sm" onClick={() => {
+                  navigator.clipboard?.writeText(user?.uid || "");
+                  const btn = document.getElementById("copy-uid-btn");
+                  if (btn) { btn.textContent = "✓ Copied"; setTimeout(() => btn.textContent = "Copy", 1500); }
+                }} id="copy-uid-btn">Copy</button>
+              </div>
+            </div>
+
+            {/* AI Sync Endpoint */}
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "block" }}>AI Sync API</label>
+              <code style={{ fontSize: 11, fontFamily: "monospace", background: "var(--bg-secondary)", padding: "8px 10px", borderRadius: 4, display: "block", color: "var(--text-primary)" }}>
+                POST {typeof window !== "undefined" ? window.location.origin : ""}/api/ai-sync
+              </code>
+            </div>
+
+            {/* Actions reference */}
+            <div style={{ fontSize: 11, color: "var(--text-tertiary)", lineHeight: 1.8 }}>
+              <strong>Available actions:</strong><br/>
+              <code>create_plan</code> — Push project + subtasks<br/>
+              <code>update_task</code> — Mark task status (todo → in_progress → done)<br/>
+              <code>complete_plan</code> — Close entire project<br/>
+              <code>get_plans</code> — List all AI-created plans
+            </div>
+          </div>
 
         </div>
       </div>
