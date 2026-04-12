@@ -35,9 +35,16 @@ export default function RootLayout({ children }) {
             {children}
           </AuthProvider>
         </ThemeProvider>
-        <Script id="sw-register" strategy="afterInteractive">{`
+        <Script id="sw-cleanup" strategy="afterInteractive">{`
           if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/sw.js').catch(() => {});
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+              registrations.forEach(function(reg) { reg.unregister(); });
+            });
+            if (window.caches) {
+              caches.keys().then(function(keys) {
+                keys.forEach(function(k) { caches.delete(k); });
+              });
+            }
           }
         `}</Script>
       </body>
