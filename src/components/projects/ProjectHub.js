@@ -338,7 +338,7 @@ export default function ProjectHub() {
         {activeViewId === "board" && <KanbanBoard items={viewItems} allItems={items} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} onAddSubtask={handleAddSubtaskToProject} isBlocked={isBlocked} onLogTime={handleLogTime} />}
         {activeViewId === "table" && <TableView items={viewItems} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} isBlocked={isBlocked} />}
         {activeViewId === "timeline" && <GanttTimeline tasks={viewItems} projects={projects} onUpdateTask={handleUpdate} onSelectTask={setSelectedItem} />}
-        {activeViewId === "calendar" && <CalendarView tasks={viewItems} projects={projects} onSelectTask={setSelectedItem} googleAccessToken={googleAccessToken} />}
+        {activeViewId === "calendar" && <CalendarView tasks={viewItems} projects={projects} habits={habits} onSelectTask={setSelectedItem} onNavigate={setActiveViewId} googleAccessToken={googleAccessToken} />}
         {activeViewId === "planning" && <PlanningView items={viewItems} onUpdate={handleUpdate} onSelect={setSelectedItem} onImplementPlan={handleImplementPlan} />}
         {activeViewId === "habits" && <HabitTracker />}
         {activeViewId === "goals" && <GoalsView items={items} />}

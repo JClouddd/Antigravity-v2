@@ -40,7 +40,7 @@ export default function TodayView({ items, projects, onUpdate, onSelect }) {
   const markDone = (id) => onUpdate(id, { status: "done", completedAt: new Date().toISOString() });
   const undoDone = (id) => onUpdate(id, { status: "todo", completedAt: null });
 
-  const TYPE_ICONS = { project: "📁", task: "✅", subtask: "↳", event: "📅" };
+  const TYPE_ICONS = { project: "📁", task: "✅", subtask: "↳", event: "📅", plan: "📋", goal: "🎯", habit: "🔄", journal: "📓" };
 
   // Generate hour slots from 6am to 11pm
   const hours = Array.from({ length: 18 }, (_, i) => i + 6);
@@ -193,7 +193,7 @@ export default function TodayView({ items, projects, onUpdate, onSelect }) {
 }
 
 function ItemRow({ item, done, onSelect, onToggle }) {
-  const TYPE_ICONS = { project: "📁", task: "✅", subtask: "↳", event: "📅" };
+  const TYPE_ICONS = { project: "📁", task: "✅", subtask: "↳", event: "📅", plan: "📋", goal: "🎯", habit: "🔄", journal: "📓" };
   return (
     <div
       style={{
