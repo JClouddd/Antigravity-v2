@@ -1,7 +1,7 @@
 import { db } from "./firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 
-// Default view configuration
+// Default view configuration (project sub-tabs)
 const DEFAULT_VIEWS = [
   { id: "today", label: "Today", enabled: true },
   { id: "board", label: "Board", enabled: true },
@@ -11,6 +11,12 @@ const DEFAULT_VIEWS = [
   { id: "planning", label: "Planning", enabled: true },
 ];
 
+// Default module configuration (sidebar / main navigation)
+const DEFAULT_MODULES = [
+  { id: "projects", label: "Projects", icon: "clipboard", enabled: true },
+  { id: "settings", label: "Settings", icon: "settings", enabled: true },
+];
+
 const SETTINGS_DOC = "v2_settings";
 
 export async function getSettings(userId) {
@@ -18,7 +24,14 @@ export async function getSettings(userId) {
     const ref = doc(db, "users", userId, SETTINGS_DOC, "config");
     const snap = await getDoc(ref);
     if (snap.exists()) {
-      return { ...getDefaultSettings(), ...snap.data() };
+      const data = snap.data();
+      return {
+        ...getDefaultSettings(),
+        ...data,
+        // Ensure arrays always exist
+        views: data.views || DEFAULT_VIEWS,
+        modules: data.modules || DEFAULT_MODULES,
+      };
     }
   } catch (e) {
     console.error("Settings load error:", e);
@@ -38,20 +51,25 @@ export async function saveSettings(userId, settings) {
 function getDefaultSettings() {
   return {
     views: DEFAULT_VIEWS,
-    moduleName: "Projects", // Renameable module title
-    theme: "system",        // light | dark | system
+    modules: DEFAULT_MODULES,
+    moduleName: "Projects",
+    theme: "system",
+    geminiApiKey: "", // Stored in settings for simplicity
   };
 }
 
 // Get ordered, enabled views with custom labels
 export function getActiveViews(settings) {
-  const views = settings?.views || DEFAULT_VIEWS;
-  return views.filter((v) => v.enabled);
+  return (settings?.views || DEFAULT_VIEWS).filter((v) => v.enabled);
 }
 
-// Get view label by ID (respects custom names)
-export function getViewLabel(settings, viewId) {
-  const views = settings?.views || DEFAULT_VIEWS;
-  const view = views.find((v) => v.id === viewId);
-  return view?.label || viewId;
+// Get ordered, enabled modules with custom labels
+export function getActiveModules(settings) {
+  return (settings?.modules || DEFAULT_MODULES).filter((m) => m.enabled);
+}
+
+// Get a specific module label
+export function getModuleLabel(settings, moduleId) {
+  const modules = settings?.modules || DEFAULT_MODULES;
+  return modules.find((m) => m.id === moduleId)?.label || moduleId;
 }

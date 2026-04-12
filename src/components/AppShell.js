@@ -1,15 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/AuthContext";
 import { useTheme } from "@/lib/theme";
+import { getSettings, getActiveModules } from "@/lib/settings";
 import ProjectHub from "@/components/projects/ProjectHub";
 import SettingsPage from "@/components/SettingsPage";
-
-const PAGES = {
-  projects: { label: "Projects", icon: "clipboard" },
-  settings: { label: "Settings", icon: "settings" },
-};
+import GeminiWidget from "@/components/GeminiWidget";
 
 const ICONS = {
   clipboard: (
@@ -24,19 +21,30 @@ const ICONS = {
   ),
 };
 
+const PAGE_COMPONENTS = {
+  projects: ProjectHub,
+  settings: SettingsPage,
+};
+
 export default function AppShell() {
-  const [activePage, setActivePage] = useState("projects");
   const { user, logout } = useAuth();
+  const [activePage, setActivePage] = useState("projects");
+  const [settings, setSettings] = useState(null);
+
+  const loadSettings = useCallback(async () => {
+    if (!user) return;
+    const s = await getSettings(user.uid);
+    setSettings(s);
+  }, [user]);
+
+  useEffect(() => { loadSettings(); }, [loadSettings]);
+
+  const modules = getActiveModules(settings);
 
   const renderPage = () => {
-    switch (activePage) {
-      case "projects":
-        return <ProjectHub />;
-      case "settings":
-        return <SettingsPage />;
-      default:
-        return <ProjectHub />;
-    }
+    const Component = PAGE_COMPONENTS[activePage];
+    if (Component) return <Component />;
+    return <ProjectHub />;
   };
 
   return (
@@ -45,14 +53,14 @@ export default function AppShell() {
       <aside className="sidebar">
         <div className="sidebar-brand">Antigravity</div>
         <nav className="sidebar-nav">
-          {Object.entries(PAGES).map(([key, { label, icon }]) => (
+          {modules.map((mod) => (
             <button
-              key={key}
-              className={`nav-item ${activePage === key ? "active" : ""}`}
-              onClick={() => setActivePage(key)}
+              key={mod.id}
+              className={`nav-item ${activePage === mod.id ? "active" : ""}`}
+              onClick={() => setActivePage(mod.id)}
             >
-              {ICONS[icon]}
-              {label}
+              {ICONS[mod.icon] || ICONS.clipboard}
+              {mod.label}
             </button>
           ))}
         </nav>
@@ -74,18 +82,21 @@ export default function AppShell() {
       {/* Mobile Bottom Tabs */}
       <nav className="mobile-tabs">
         <div className="mobile-tabs-inner">
-          {Object.entries(PAGES).map(([key, { label, icon }]) => (
+          {modules.map((mod) => (
             <button
-              key={key}
-              className={`tab-item ${activePage === key ? "active" : ""}`}
-              onClick={() => setActivePage(key)}
+              key={mod.id}
+              className={`tab-item ${activePage === mod.id ? "active" : ""}`}
+              onClick={() => setActivePage(mod.id)}
             >
-              {ICONS[icon]}
-              <span>{label}</span>
+              {ICONS[mod.icon] || ICONS.clipboard}
+              <span>{mod.label}</span>
             </button>
           ))}
         </div>
       </nav>
+
+      {/* Gemini AI Widget — global */}
+      <GeminiWidget settings={settings} />
     </div>
   );
 }

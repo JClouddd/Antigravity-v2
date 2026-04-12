@@ -95,32 +95,46 @@ export async function getGoogleTasks(accessToken, taskListId = "@default") {
   return data.items || [];
 }
 
-// ===== SYNC ENGINE =====
-
 // Push a Hub item to Google (create or update)
 export async function syncItemToGoogle(accessToken, item, updateItemCallback) {
-  if (!accessToken) return;
+  if (!accessToken) { console.warn("[SYNC] No access token — skipping"); return; }
 
   try {
     if (item.type === "event" || item.timeBlock) {
-      // Sync as calendar event
+      // Must have a date to create a calendar event
+      if (!item.timeBlock?.date && !item.startDate && !item.dueDate) {
+        console.warn(`[SYNC] Skipping calendar sync for "${item.title}" — no date set`);
+        return;
+      }
       if (item.googleCalendarEventId) {
+        console.log(`[SYNC] Updating calendar event: ${item.title}`);
         await updateCalendarEvent(accessToken, item.googleCalendarEventId, item);
       } else {
+        console.log(`[SYNC] Creating calendar event: ${item.title}`);
         const created = await createCalendarEvent(accessToken, item);
+        console.log(`[SYNC] Created calendar event ID: ${created.id}`);
         await updateItemCallback({ googleCalendarEventId: created.id });
       }
     } else if (item.type === "task" || item.type === "subtask") {
-      // Sync as Google Task
       if (item.googleTaskId) {
+        console.log(`[SYNC] Updating Google Task: ${item.title}`);
         await updateGoogleTask(accessToken, item.googleTaskId, item);
       } else {
+        console.log(`[SYNC] Creating Google Task: ${item.title}`);
         const created = await createGoogleTask(accessToken, item);
+        console.log(`[SYNC] Created task ID: ${created.id}`);
         await updateItemCallback({ googleTaskId: created.id });
       }
+    } else if (item.type === "project") {
+      // Projects don't sync to Google directly
+      console.log(`[SYNC] Skipping project: ${item.title}`);
     }
   } catch (err) {
-    console.error("Google sync error:", err);
+    console.error(`[SYNC] Error syncing "${item.title}":`, err.message);
+    // If 401/403, token is likely expired or missing scopes
+    if (err.message.includes("401") || err.message.includes("403")) {
+      console.error("[SYNC] Token expired or missing scopes. User needs to reconnect Google.");
+    }
   }
 }
 
@@ -144,19 +158,26 @@ function itemToCalendarEvent(item) {
     location: item.location || undefined,
   };
 
-  // Time
+  // Time — use timeBlock first, then dates, then default to today
   if (item.timeBlock?.date) {
     if (item.allDay) {
       event.start = { date: item.timeBlock.date };
       event.end = { date: item.timeBlock.date };
     } else {
-      event.start = { dateTime: `${item.timeBlock.date}T${item.timeBlock.startTime || "09:00"}:00`, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone };
-      event.end = { dateTime: `${item.timeBlock.date}T${item.timeBlock.endTime || "10:00"}:00`, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone };
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      event.start = { dateTime: `${item.timeBlock.date}T${item.timeBlock.startTime || "09:00"}:00`, timeZone: tz };
+      event.end = { dateTime: `${item.timeBlock.date}T${item.timeBlock.endTime || "10:00"}:00`, timeZone: tz };
     }
   } else if (item.startDate || item.dueDate) {
-    const date = item.startDate || item.dueDate;
-    event.start = { date };
-    event.end = { date: item.dueDate || date };
+    const start = item.startDate || item.dueDate;
+    const end = item.dueDate || item.startDate;
+    event.start = { date: start };
+    event.end = { date: end };
+  } else {
+    // Fallback: all-day event today
+    const today = new Date().toISOString().split("T")[0];
+    event.start = { date: today };
+    event.end = { date: today };
   }
 
   // Reminders
