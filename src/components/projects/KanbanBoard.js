@@ -112,7 +112,7 @@ export default function KanbanBoard({ items, allItems, projects, onUpdate, onSel
                 const isDone = item.status === "done";
                 const subs = isProject ? getSubs(item.id) : [];
                 const subsDone = isProject ? getSubsDone(item.id) : 0;
-                if (isSubtask && expandedProjects[item.parentId] === false) return null;
+                if (isSubtask && expandedProjects[item.parentId] !== true) return null;
                 const pColor = isSubtask ? (projects.find(p => p.id === item.parentId)?.color || "var(--accent)") : null;
 
                 return (
@@ -139,7 +139,7 @@ export default function KanbanBoard({ items, allItems, projects, onUpdate, onSel
                           {/* Title row: chevron + dot + title + count + done + edit + add */}
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <div onClick={(e) => { e.stopPropagation(); toggleProject(item.id); }}
-                              style={{ cursor: "pointer", transition: "transform 0.15s", transform: expandedProjects[item.id] === false ? "rotate(-90deg)" : "rotate(0deg)", color: "var(--text-tertiary)", display: "flex", flexShrink: 0 }}>
+                              style={{ cursor: "pointer", transition: "transform 0.15s", transform: expandedProjects[item.id] === true ? "rotate(0deg)" : "rotate(-90deg)", color: "var(--text-tertiary)", display: "flex", flexShrink: 0 }}>
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
                             </div>
                             <div style={{ width: 8, height: 8, borderRadius: "50%", background: item.color || "var(--accent)", flexShrink: 0 }} />

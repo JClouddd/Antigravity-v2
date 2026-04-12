@@ -221,11 +221,11 @@ export default function TableView({ items, projects, onUpdate, onSelect, isBlock
             {sortedItems.map((item) => {
               const isProject = item.type === "project";
               const isSubtask = item.type === "subtask";
-              const isExpanded = expandedProjects[item.id] !== false; // default expanded
+              const isExpanded = expandedProjects[item.id] === true; // default collapsed
               const blocked = isBlocked ? isBlocked(item) : false;
 
               // Hide subtasks if their parent project is collapsed
-              if (isSubtask && expandedProjects[item.parentId] === false) return null;
+              if (isSubtask && expandedProjects[item.parentId] !== true) return null;
 
               const subInfo = isProject ? getSubCount(item.id) : null;
 

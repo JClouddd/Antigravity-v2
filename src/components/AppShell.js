@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/AuthContext";
 import { useTheme } from "@/lib/theme";
-import { getSettings, getActiveModules } from "@/lib/settings";
+import { getSettings, saveSettings, getActiveModules } from "@/lib/settings";
 import { getItems, createItem, updateItem } from "@/lib/projects";
 import { syncItemToGoogle } from "@/lib/googleSync";
 import ProjectHub from "@/components/projects/ProjectHub";
@@ -79,6 +79,7 @@ export default function AppShell() {
   const [allItems, setAllItems] = useState([]);
   const [commandOpen, setCommandOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarDragIdx, setSidebarDragIdx] = useState(null);
 
   const loadSettings = useCallback(async () => {
     if (!user) return;
@@ -133,6 +134,31 @@ export default function AppShell() {
   };
 
   const modules = getActiveModules(settings);
+
+  // Sidebar drag-reorder handlers
+  const handleSidebarDragStart = (idx) => setSidebarDragIdx(idx);
+  const handleSidebarDragOver = (e, idx) => {
+    e.preventDefault();
+    if (sidebarDragIdx === null || sidebarDragIdx === idx) return;
+    // Reorder the modules array in settings
+    const allMods = [...(settings?.modules || [])];
+    const enabledMods = allMods.filter(m => m.enabled !== false);
+    const fromMod = enabledMods[sidebarDragIdx];
+    const toMod = enabledMods[idx];
+    if (!fromMod || !toMod) return;
+    const fromAll = allMods.findIndex(m => m.id === fromMod.id);
+    const toAll = allMods.findIndex(m => m.id === toMod.id);
+    const [moved] = allMods.splice(fromAll, 1);
+    allMods.splice(toAll, 0, moved);
+    setSettings(prev => ({ ...prev, modules: allMods }));
+    setSidebarDragIdx(idx);
+  };
+  const handleSidebarDragEnd = async () => {
+    setSidebarDragIdx(null);
+    if (user && settings) {
+      await saveSettings(user.uid, settings);
+    }
+  };
   const cycleTheme = () => {
     const order = ["system", "light", "dark"];
     const next = order[(order.indexOf(preference) + 1) % order.length];
@@ -160,11 +186,19 @@ export default function AppShell() {
       <aside className="sidebar">
         <div className="sidebar-brand">Antigravity</div>
         <nav className="sidebar-nav">
-          {modules.map((mod) => (
+          {modules.map((mod, idx) => (
             <button
               key={mod.id}
+              draggable
+              onDragStart={() => handleSidebarDragStart(idx)}
+              onDragOver={(e) => handleSidebarDragOver(e, idx)}
+              onDragEnd={handleSidebarDragEnd}
               className={`nav-item ${activePage === mod.id ? "active" : ""} ${mod.id === "search" && commandOpen ? "active" : ""}`}
               onClick={() => handleModuleClick(mod)}
+              style={{
+                opacity: sidebarDragIdx === idx ? 0.5 : 1,
+                borderTop: sidebarDragIdx !== null && sidebarDragIdx !== idx ? undefined : undefined,
+              }}
             >
               {ICONS[mod.icon] || ICONS.clipboard}
               {mod.label}

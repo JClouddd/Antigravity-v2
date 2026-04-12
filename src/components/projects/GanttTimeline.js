@@ -31,7 +31,7 @@ export default function GanttTimeline({ tasks, projects, onUpdateTask, onSelectT
     for (const p of projectItems) {
       ordered.push(p);
       used.add(p.id);
-      if (expandedProjects[p.id] !== false) { // default expanded
+      if (expandedProjects[p.id] === true) { // default collapsed
         const subs = tasks.filter(t => t.parentId === p.id).sort((a, b) => (a.dueDate || "z").localeCompare(b.dueDate || "z"));
         for (const s of subs) { ordered.push(s); used.add(s.id); }
       }
@@ -110,7 +110,7 @@ export default function GanttTimeline({ tasks, projects, onUpdateTask, onSelectT
             const isProject = task.type === "project";
             const isSubtask = task.type === "subtask";
             const subInfo = isProject ? getSubCount(task.id) : null;
-            const isExpanded = expandedProjects[task.id] !== false;
+            const isExpanded = expandedProjects[task.id] === true;
 
             return (
               <div
