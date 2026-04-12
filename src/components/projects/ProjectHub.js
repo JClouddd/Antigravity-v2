@@ -5,11 +5,16 @@ import { useAuth } from "@/lib/AuthContext";
 import { getItems, createItem, updateItem, deleteItem, getProjects, getActiveItems, getPlanningItems, upsertItemByGoogleId } from "@/lib/projects";
 import { syncItemToGoogle, unsyncItemFromGoogle, pullFromGoogle } from "@/lib/googleSync";
 import { getSettings, saveSettings, getActiveViews } from "@/lib/settings";
+import { evaluateRules, evaluateTimeRules } from "@/lib/automations";
+import { getHabits } from "@/lib/habits";
 import KanbanBoard from "./KanbanBoard";
 import TableView from "./TableView";
 import TodayView from "./TodayView";
 import GanttTimeline from "./GanttTimeline";
 import CalendarView from "./CalendarView";
+import HabitTracker from "./HabitTracker";
+import GoalsView from "./GoalsView";
+import WeeklyReview from "./WeeklyReview";
 import TaskDetailSheet from "./TaskDetailSheet";
 import CreateItemModal from "./CreateItemModal";
 
@@ -32,13 +37,17 @@ export default function ProjectHub() {
   const [showSettings, setShowSettings] = useState(false);
   const [createDefaults, setCreateDefaults] = useState({});
   const [loading, setLoading] = useState(true);
+  const [habits, setHabits] = useState([]);
+  const [timeEntries, setTimeEntries] = useState([]);
+  const enabledRules = ["auto_complete_project", "auto_complete_past_event", "escalate_overdue", "auto_progress"];
 
   const loadData = useCallback(async () => {
     if (!user) return;
     try {
-      const [data, s] = await Promise.all([getItems(user.uid), getSettings(user.uid)]);
+      const [data, s, h] = await Promise.all([getItems(user.uid), getSettings(user.uid), getHabits(user.uid)]);
       setItems(data);
       setSettings(s);
+      setHabits(h);
       const activeViews = getActiveViews(s);
       if (activeViews.length > 0 && !activeViews.find((v) => v.id === activeViewId)) {
         setActiveViewId(activeViews[0].id);
@@ -134,6 +143,18 @@ export default function ProjectHub() {
     }
     setItems(updatedItems);
     if (selectedItem?.id === itemId) setSelectedItem((prev) => ({ ...prev, ...updates }));
+
+    // Run automation rules
+    const changedItem = updatedItems.find(i => i.id === itemId);
+    if (changedItem) {
+      const automationResults = evaluateRules(updatedItems, changedItem, enabledRules, "subtask_completed");
+      for (const { itemId: ruleItemId, updates: ruleUpdates } of automationResults) {
+        await updateItem(user.uid, ruleItemId, ruleUpdates);
+        updatedItems = updatedItems.map(i => i.id === ruleItemId ? { ...i, ...ruleUpdates } : i);
+      }
+      if (automationResults.length > 0) setItems(updatedItems);
+    }
+
     if (googleAccessToken) {
       const updatedItem = updatedItems.find((i) => i.id === itemId);
       if (updatedItem) {
@@ -175,7 +196,29 @@ export default function ProjectHub() {
 
   const viewItems = activeViewId === "planning" ? getPlanningItems(items)
     : activeViewId === "today" ? items
+    : activeViewId === "habits" ? items
+    : activeViewId === "goals" ? items
+    : activeViewId === "review" ? items
     : getActiveItems(items);
+
+  // Time logging handler
+  const handleLogTime = async (entry) => {
+    setTimeEntries(prev => [...prev, entry]);
+    // Auto-set to in_progress via automation
+    const item = items.find(i => i.id === entry.itemId);
+    if (item && item.status === "todo") {
+      await handleUpdate(item.id, { status: "in_progress" });
+    }
+  };
+
+  // Check if item is blocked by dependencies
+  const isBlocked = (item) => {
+    if (!item.dependencies?.length) return false;
+    return item.dependencies.some(depId => {
+      const dep = items.find(i => i.id === depId);
+      return dep && dep.status !== "done";
+    });
+  };
 
   if (loading) {
     return (
@@ -234,12 +277,15 @@ export default function ProjectHub() {
           <SettingsPanel settings={settings} onSave={handleSaveSettings} onClose={() => setShowSettings(false)} />
         )}
 
-        {activeViewId === "today" && <TodayView items={viewItems} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} />}
-        {activeViewId === "board" && <KanbanBoard items={viewItems} allItems={items} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} onAddSubtask={handleAddSubtaskToProject} />}
-        {activeViewId === "table" && <TableView items={viewItems} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} />}
+        {activeViewId === "today" && <TodayView items={viewItems} projects={projects} habits={habits} onUpdate={handleUpdate} onSelect={setSelectedItem} />}
+        {activeViewId === "board" && <KanbanBoard items={viewItems} allItems={items} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} onAddSubtask={handleAddSubtaskToProject} isBlocked={isBlocked} onLogTime={handleLogTime} />}
+        {activeViewId === "table" && <TableView items={viewItems} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} isBlocked={isBlocked} />}
         {activeViewId === "timeline" && <GanttTimeline tasks={viewItems} projects={projects} onUpdateTask={handleUpdate} onSelectTask={setSelectedItem} />}
         {activeViewId === "calendar" && <CalendarView tasks={viewItems} projects={projects} onSelectTask={setSelectedItem} googleAccessToken={googleAccessToken} />}
         {activeViewId === "planning" && <TableView items={viewItems} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} />}
+        {activeViewId === "habits" && <HabitTracker />}
+        {activeViewId === "goals" && <GoalsView items={items} />}
+        {activeViewId === "review" && <WeeklyReview items={items} habits={habits} />}
 
         {selectedItem && (
           <TaskDetailSheet

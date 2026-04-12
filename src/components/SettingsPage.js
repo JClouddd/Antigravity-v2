@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { useTheme } from "@/lib/theme";
 import { useState, useEffect, useCallback } from "react";
 import { getSettings, saveSettings } from "@/lib/settings";
+import { getAvailableRules } from "@/lib/automations";
 
 export default function SettingsPage() {
   const { user, googleAccessToken, isTokenFresh, refreshGoogleToken, logout } = useAuth();
@@ -119,6 +120,40 @@ export default function SettingsPage() {
               Configure project sub-tabs. Drag to reorder, rename, or toggle.
             </p>
             <DraggableList items={views} setItems={setViews} type="views" />
+          </div>
+
+          {/* Automation Rules */}
+          <div className="card">
+            <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Automation Rules</h3>
+            <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 12 }}>
+              Toggle rules that automatically trigger actions on your items.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {getAvailableRules().map(rule => (
+                <label key={rule.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+                  <input type="checkbox" defaultChecked style={{ accentColor: "var(--accent)" }} />
+                  {rule.label}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Siri Shortcuts */}
+          <div className="card">
+            <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Siri Shortcuts</h3>
+            <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 12 }}>
+              Use Siri to add tasks via Apple Shortcuts. Your token is your user ID.
+            </p>
+            <div style={{ fontSize: 11, fontFamily: "monospace", background: "var(--bg-secondary)", padding: 8, borderRadius: 4, wordBreak: "break-all", marginBottom: 8 }}>
+              {typeof window !== 'undefined' && window.location.origin}/api/siri?action=add&type=task&title=YOUR_TASK&token={user?.uid?.slice(0,8)}...
+            </div>
+            <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
+              <strong>Setup:</strong> Open Apple Shortcuts → New Shortcut → "Get Contents of URL" → paste the URL above (replace YOUR_TASK with "Ask Each Time").
+              Then: "Hey Siri, run [shortcut name]".
+            </div>
+            <button className="btn btn-sm" style={{ marginTop: 8, fontSize: 11 }} onClick={() => {
+              navigator.clipboard?.writeText(`${window.location.origin}/api/siri?action=add&type=task&title=PLACEHOLDER&token=${user?.uid}`);
+            }}>Copy API URL</button>
           </div>
 
           {/* API Keys */}

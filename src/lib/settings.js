@@ -9,6 +9,9 @@ const DEFAULT_VIEWS = [
   { id: "timeline", label: "Timeline", enabled: true },
   { id: "calendar", label: "Calendar", enabled: true },
   { id: "planning", label: "Planning", enabled: true },
+  { id: "habits", label: "Habits", enabled: true },
+  { id: "goals", label: "Goals", enabled: true },
+  { id: "review", label: "Review", enabled: true },
 ];
 
 // Default module configuration (sidebar / main navigation)
