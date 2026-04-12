@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/AuthContext";
 import { getItems, createItem, updateItem, deleteItem, getProjects, getActiveItems, getPlanningItems } from "@/lib/projects";
 import { syncItemToGoogle, unsyncItemFromGoogle } from "@/lib/googleSync";
+import { getSettings, saveSettings, getActiveViews } from "@/lib/settings";
 import KanbanBoard from "./KanbanBoard";
 import TableView from "./TableView";
 import TodayView from "./TodayView";
@@ -11,23 +12,39 @@ import GanttTimeline from "./GanttTimeline";
 import CalendarView from "./CalendarView";
 import TaskDetailSheet from "./TaskDetailSheet";
 import CreateItemModal from "./CreateItemModal";
+import SettingsPanel from "./SettingsPanel";
 
-const VIEWS = ["Today", "Board", "Table", "Timeline", "Calendar", "Planning"];
+const VIEW_COMPONENTS = {
+  today: "Today",
+  board: "Board",
+  table: "Table",
+  timeline: "Timeline",
+  calendar: "Calendar",
+  planning: "Planning",
+};
 
 export default function ProjectHub() {
   const { user, googleAccessToken } = useAuth();
   const [items, setItems] = useState([]);
-  const [activeView, setActiveView] = useState("Today");
+  const [settings, setSettings] = useState(null);
+  const [activeViewId, setActiveViewId] = useState("today");
   const [selectedItem, setSelectedItem] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [createDefaults, setCreateDefaults] = useState({});
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
     if (!user) return;
     try {
-      const data = await getItems(user.uid);
+      const [data, s] = await Promise.all([getItems(user.uid), getSettings(user.uid)]);
       setItems(data);
+      setSettings(s);
+      // Set active view to first enabled view
+      const activeViews = getActiveViews(s);
+      if (activeViews.length > 0 && !activeViews.find((v) => v.id === activeViewId)) {
+        setActiveViewId(activeViews[0].id);
+      }
     } catch (e) {
       console.error("Load error:", e);
     } finally {
@@ -36,6 +53,17 @@ export default function ProjectHub() {
   }, [user]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  const handleSaveSettings = async (newSettings) => {
+    const merged = { ...settings, ...newSettings };
+    setSettings(merged);
+    await saveSettings(user.uid, merged);
+    // If current view was disabled, switch to first enabled
+    const activeViews = getActiveViews(merged);
+    if (!activeViews.find((v) => v.id === activeViewId)) {
+      setActiveViewId(activeViews[0]?.id || "today");
+    }
+  };
 
   const handleCreate = async (data) => {
     const subtasksData = data._subtasks || [];
@@ -55,8 +83,6 @@ export default function ProjectHub() {
     setItems((prev) => [...newItems, ...prev]);
     setShowCreate(false);
     setCreateDefaults({});
-
-    // Sync to Google
     if (googleAccessToken) {
       for (const newItem of newItems) {
         syncItemToGoogle(googleAccessToken, newItem, async (syncUpdates) => {
@@ -82,8 +108,6 @@ export default function ProjectHub() {
     }
     setItems(updatedItems);
     if (selectedItem?.id === itemId) setSelectedItem((prev) => ({ ...prev, ...updates }));
-
-    // Sync to Google
     if (googleAccessToken) {
       const updatedItem = updatedItems.find((i) => i.id === itemId);
       if (updatedItem) {
@@ -101,7 +125,6 @@ export default function ProjectHub() {
       const children = items.filter((i) => i.parentId === itemId);
       for (const child of children) await deleteItem(user.uid, child.id);
     }
-    // Unsync from Google before deleting
     if (googleAccessToken && item) {
       await unsyncItemFromGoogle(googleAccessToken, item);
       if (item.type === "project") {
@@ -121,8 +144,11 @@ export default function ProjectHub() {
   };
 
   const projects = getProjects(items);
-  const viewItems = activeView === "Planning" ? getPlanningItems(items)
-    : activeView === "Today" ? items // Today view handles its own filtering
+  const activeViews = getActiveViews(settings);
+  const moduleName = settings?.moduleName || "Projects";
+
+  const viewItems = activeViewId === "planning" ? getPlanningItems(items)
+    : activeViewId === "today" ? items
     : getActiveItems(items);
 
   if (loading) {
@@ -138,28 +164,34 @@ export default function ProjectHub() {
       <div className="page-header">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
           <div>
-            <h1>{activeView === "Planning" ? "Planning" : activeView === "Today" ? "Today" : "Projects"}</h1>
+            <h1>{activeViewId === "planning" ? activeViews.find(v => v.id === "planning")?.label || "Planning" :
+                 activeViewId === "today" ? activeViews.find(v => v.id === "today")?.label || "Today" :
+                 moduleName}</h1>
             <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-              {activeView === "Planning" ? "Items under consideration." :
-               activeView === "Today" ? "Your schedule and tasks for today." :
+              {activeViewId === "today" ? "Your schedule and tasks for today." :
                `${projects.length} project${projects.length !== 1 ? "s" : ""} · ${items.filter(i => i.type === "task").length} tasks · ${items.filter(i => i.type === "event").length} events`}
             </p>
           </div>
-          <button className="btn btn-primary" onClick={() => { setCreateDefaults({}); setShowCreate(true); }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Add Item
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn" onClick={() => setShowSettings(true)} title="Settings">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+            </button>
+            <button className="btn btn-primary" onClick={() => { setCreateDefaults({}); setShowCreate(true); }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add Item
+            </button>
+          </div>
         </div>
 
-        {/* View Tabs */}
+        {/* View Tabs — from settings */}
         <div style={{ display: "flex", gap: 0, marginTop: 12, borderBottom: "1px solid var(--border)", overflowX: "auto" }}>
-          {VIEWS.map((v) => (
-            <button key={v} onClick={() => setActiveView(v)} style={{
+          {activeViews.map((v) => (
+            <button key={v.id} onClick={() => setActiveViewId(v.id)} style={{
               padding: "8px 14px", fontSize: 13, fontWeight: 500, border: "none", background: "none", cursor: "pointer",
-              color: activeView === v ? "var(--accent)" : "var(--text-secondary)",
-              borderBottom: activeView === v ? "2px solid var(--accent)" : "2px solid transparent",
+              color: activeViewId === v.id ? "var(--accent)" : "var(--text-secondary)",
+              borderBottom: activeViewId === v.id ? "2px solid var(--accent)" : "2px solid transparent",
               transition: "all 0.15s", whiteSpace: "nowrap",
-            }}>{v}</button>
+            }}>{v.label}</button>
           ))}
         </div>
       </div>
@@ -167,30 +199,21 @@ export default function ProjectHub() {
       <div className="page-body" style={{ position: "relative" }}>
         {showCreate && (
           <CreateItemModal
-            projects={projects} defaultStatus={activeView === "Planning" ? "planning" : "todo"}
+            projects={projects} defaultStatus={activeViewId === "planning" ? "planning" : "todo"}
             defaults={createDefaults} onCreate={handleCreate} onClose={() => { setShowCreate(false); setCreateDefaults({}); }}
           />
         )}
 
-        {activeView === "Today" && (
-          <TodayView items={viewItems} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} />
+        {showSettings && (
+          <SettingsPanel settings={settings} onSave={handleSaveSettings} onClose={() => setShowSettings(false)} />
         )}
-        {activeView === "Board" && (
-          <KanbanBoard items={viewItems} allItems={items} projects={projects}
-            onUpdate={handleUpdate} onSelect={setSelectedItem} onAddSubtask={handleAddSubtaskToProject} />
-        )}
-        {activeView === "Table" && (
-          <TableView items={viewItems} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} />
-        )}
-        {activeView === "Timeline" && (
-          <GanttTimeline tasks={viewItems} projects={projects} onUpdateTask={handleUpdate} onSelectTask={setSelectedItem} />
-        )}
-        {activeView === "Calendar" && (
-          <CalendarView tasks={viewItems} projects={projects} onSelectTask={setSelectedItem} googleAccessToken={googleAccessToken} />
-        )}
-        {activeView === "Planning" && (
-          <TableView items={viewItems} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} />
-        )}
+
+        {activeViewId === "today" && <TodayView items={viewItems} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} />}
+        {activeViewId === "board" && <KanbanBoard items={viewItems} allItems={items} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} onAddSubtask={handleAddSubtaskToProject} />}
+        {activeViewId === "table" && <TableView items={viewItems} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} />}
+        {activeViewId === "timeline" && <GanttTimeline tasks={viewItems} projects={projects} onUpdateTask={handleUpdate} onSelectTask={setSelectedItem} />}
+        {activeViewId === "calendar" && <CalendarView tasks={viewItems} projects={projects} onSelectTask={setSelectedItem} googleAccessToken={googleAccessToken} />}
+        {activeViewId === "planning" && <TableView items={viewItems} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} />}
 
         {selectedItem && (
           <TaskDetailSheet

@@ -9,6 +9,8 @@ const COLUMNS = [
 ];
 
 const TYPE_ICONS = { project: "📁", task: "✅", subtask: "↳", event: "📅" };
+const TYPE_TAG = { project: "PRJ", task: "TSK", subtask: "SUB", event: "EVT" };
+const TYPE_TAG_COLOR = { project: "#7c3aed", task: "#2563eb", subtask: "#6b7280", event: "#059669" };
 const PRIORITY_DOT = { urgent: "#dc2626", high: "#d97706", medium: "#2563eb", low: "#94a3b8" };
 
 export default function KanbanBoard({ items, allItems, projects, onUpdate, onSelect, onAddSubtask }) {
@@ -140,6 +142,7 @@ export default function KanbanBoard({ items, allItems, projects, onUpdate, onSel
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
                             </div>
                             <div style={{ width: 8, height: 8, borderRadius: "50%", background: item.color || "var(--accent)", flexShrink: 0 }} />
+                            <span style={{ fontSize: 9, fontWeight: 700, color: TYPE_TAG_COLOR.project, background: `${TYPE_TAG_COLOR.project}15`, padding: "1px 4px", borderRadius: 3, flexShrink: 0, letterSpacing: "0.03em" }}>PRJ</span>
                             <span style={{ fontSize: 13, fontWeight: 600, flex: 1, textDecoration: isDone ? "line-through" : "none", color: isDone ? "var(--text-tertiary)" : "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
                             {subs.length > 0 && <span style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }}>{subsDone}/{subs.length}</span>}
                             <DoneBtn item={item} isDone={isDone} />
@@ -164,7 +167,7 @@ export default function KanbanBoard({ items, allItems, projects, onUpdate, onSel
                           {/* Title row: priority dot + icon + title + done + edit */}
                           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                             <div style={{ width: 6, height: 6, borderRadius: "50%", background: PRIORITY_DOT[item.priority] || PRIORITY_DOT.medium, flexShrink: 0 }} />
-                            <span style={{ fontSize: 13 }}>{TYPE_ICONS[item.type]}</span>
+                            <span style={{ fontSize: 9, fontWeight: 700, color: TYPE_TAG_COLOR[item.type], background: `${TYPE_TAG_COLOR[item.type]}15`, padding: "1px 4px", borderRadius: 3, flexShrink: 0, letterSpacing: "0.03em" }}>{TYPE_TAG[item.type]}</span>
                             <span style={{ fontSize: 13, fontWeight: 500, flex: 1, textDecoration: isDone ? "line-through" : "none", color: isDone ? "var(--text-tertiary)" : "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
                             <DoneBtn item={item} isDone={isDone} />
                             <EditBtn item={item} />
