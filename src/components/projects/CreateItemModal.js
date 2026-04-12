@@ -243,6 +243,7 @@ export default function CreateItemModal({ projects, activeProject, defaultStatus
                     <input type="time" value={timeBlockEnd} onChange={(e) => setTimeBlockEnd(e.target.value)} />
                   </div>
                 </div>
+              )}
 
               {/* Recurrence */}
               {(type === "event" || type === "task") && (
