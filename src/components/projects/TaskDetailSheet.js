@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import TimeTracker, { TimeLog } from "./TimeTracker";
+import RecurrencePicker from "./RecurrencePicker";
 
 const PRIORITIES = ["low", "medium", "high", "urgent"];
 const STATUSES = [
@@ -35,6 +36,7 @@ export default function TaskDetailSheet({ task, tasks, projects, onUpdate, onDel
   const [deps, setDeps] = useState(task.dependencies || []);
   const [location, setLocation] = useState(task.location || "");
   const [notes, setNotes] = useState(task.notes || "");
+  const [recurrence, setRecurrence] = useState(task.recurrence || null);
 
   const project = projects.find((p) => p.id === task.parentId);
   const isProject = task.type === "project";
@@ -48,6 +50,7 @@ export default function TaskDetailSheet({ task, tasks, projects, onUpdate, onDel
       startDate: startDate || null, dueDate: dueDate || null,
       timeBlock: timeBlockDate ? { date: timeBlockDate, startTime: timeBlockStart, endTime: timeBlockEnd } : null,
       dependencies: deps, location, notes,
+      recurrence: recurrence || null,
     };
     if (status === "done" && task.status !== "done") {
       updates.completedAt = new Date().toISOString();
@@ -149,6 +152,14 @@ export default function TaskDetailSheet({ task, tasks, projects, onUpdate, onDel
             <SectionLabel>Notes</SectionLabel>
             <textarea placeholder="Additional notes..." value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} style={{ fontSize: 13, resize: "vertical" }} />
           </div>
+
+          {/* Recurrence */}
+          {(task.type === "task" || task.type === "event" || task.type === "habit") && (
+            <div>
+              <SectionLabel>Recurrence</SectionLabel>
+              <RecurrencePicker value={recurrence} onChange={setRecurrence} />
+            </div>
+          )}
 
           {/* Time Logged */}
           {itemTimeEntries.length > 0 && (
