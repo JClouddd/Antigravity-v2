@@ -124,7 +124,8 @@ export function getEvents(items) {
 }
 
 export function getPlanningItems(items) {
-  return items.filter((i) => i.status === "planning");
+  const planIds = new Set(items.filter(i => i.type === "plan").map(i => i.id));
+  return items.filter((i) => i.status === "planning" || i.type === "plan" || planIds.has(i.parentId));
 }
 
 export function getActiveItems(items) {

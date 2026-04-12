@@ -7,6 +7,7 @@ const ITEM_TYPES = [
   { key: "project", label: "Project", desc: "Top-level container with sub-tasks", icon: "📁" },
   { key: "task", label: "Task", desc: "Standalone action item", icon: "✅" },
   { key: "event", label: "Event", desc: "Calendar event with time block", icon: "📅" },
+  { key: "plan", label: "Plan", desc: "Blueprint or objective — implement when ready", icon: "📋" },
 ];
 
 const PRIORITIES = ["low", "medium", "high", "urgent"];
@@ -53,18 +54,17 @@ export default function CreateItemModal({ projects, activeProject, defaultStatus
   const handleCreate = async () => {
     if (!title.trim()) return;
 
-    if (type === "project") {
-      // Create project first, then sub-tasks
+    if (type === "project" || type === "plan") {
       await onCreate({
-        type: "project",
+        type: type,
         title: title.trim(),
         description,
-        status: defaultStatus || "todo",
+        status: type === "plan" ? "planning" : (defaultStatus || "todo"),
         priority,
         color,
         startDate: startDate || null,
         dueDate: dueDate || null,
-        _subtasks: subtasks, // Pass subtasks for the parent to create
+        _subtasks: subtasks,
       });
     } else {
       await onCreate({
@@ -144,8 +144,8 @@ export default function CreateItemModal({ projects, activeProject, defaultStatus
                 rows={2} style={{ resize: "vertical", fontSize: 14 }}
               />
 
-              {/* Project: Color picker */}
-              {type === "project" && (
+              {/* Project/Plan: Color picker */}
+              {(type === "project" || type === "plan") && (
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 6, display: "block" }}>Color</label>
                   <div style={{ display: "flex", gap: 6 }}>
@@ -160,11 +160,11 @@ export default function CreateItemModal({ projects, activeProject, defaultStatus
                 </div>
               )}
 
-              {/* Project: Inline sub-tasks */}
-              {type === "project" && (
+              {/* Project/Plan: Inline sub-tasks / steps */}
+              {(type === "project" || type === "plan") && (
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 6, display: "block" }}>
-                    Sub-tasks ({subtasks.length})
+                    {type === "plan" ? "Steps" : "Sub-tasks"} ({subtasks.length})
                   </label>
                   {subtasks.length > 0 && (
                     <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 }}>

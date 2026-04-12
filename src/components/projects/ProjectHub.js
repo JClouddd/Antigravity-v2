@@ -15,6 +15,7 @@ import CalendarView from "./CalendarView";
 import HabitTracker from "./HabitTracker";
 import GoalsView from "./GoalsView";
 import WeeklyReview from "./WeeklyReview";
+import PlanningView from "./PlanningView";
 import TaskDetailSheet from "./TaskDetailSheet";
 import CreateItemModal from "./CreateItemModal";
 
@@ -191,6 +192,61 @@ export default function ProjectHub() {
   };
 
   const projects = getProjects(items);
+  // Implement plan → creates project + subtasks from plan steps
+  const handleImplementPlan = async (plan) => {
+    // Create project from the plan
+    const project = await createItem(user.uid, {
+      type: "project",
+      title: plan.title,
+      description: plan.description || "",
+      status: "todo",
+      priority: plan.priority || "medium",
+      color: plan.color || "#2563eb",
+      startDate: plan.startDate || null,
+      dueDate: plan.dueDate || null,
+      sourceRef: plan.id, // Link back to the plan
+    });
+
+    if (!project) return;
+    const newItems = [project];
+
+    // Convert plan steps (subtasks) to project subtasks
+    const planSteps = items.filter(i => i.parentId === plan.id);
+    for (const step of planSteps) {
+      const subtask = await createItem(user.uid, {
+        type: "subtask",
+        title: step.title,
+        description: step.description || "",
+        status: step.status === "done" ? "done" : "todo",
+        priority: step.priority || "medium",
+        parentId: project.id, // Reparent to the new project
+        completedAt: step.completedAt || null,
+      });
+      if (subtask) newItems.push(subtask);
+    }
+
+    // Mark plan as implemented
+    await updateItem(user.uid, plan.id, {
+      status: "archived",
+      implementedProjectId: project.id,
+    });
+
+    setItems(prev => [...newItems, ...prev.map(i => i.id === plan.id ? { ...i, status: "archived", implementedProjectId: project.id } : i)]);
+
+    // Sync to Google
+    if (googleAccessToken) {
+      for (const newItem of newItems) {
+        syncItemToGoogle(googleAccessToken, newItem, async (syncUpdates) => {
+          await updateItem(user.uid, newItem.id, syncUpdates);
+          setItems(prev => prev.map(i => i.id === newItem.id ? { ...i, ...syncUpdates } : i));
+        });
+      }
+    }
+
+    // Switch to board view to see the new project
+    setActiveViewId("board");
+  };
+
   const activeViews = getActiveViews(settings);
   const moduleName = settings?.moduleName || "Projects";
 
@@ -282,7 +338,7 @@ export default function ProjectHub() {
         {activeViewId === "table" && <TableView items={viewItems} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} isBlocked={isBlocked} />}
         {activeViewId === "timeline" && <GanttTimeline tasks={viewItems} projects={projects} onUpdateTask={handleUpdate} onSelectTask={setSelectedItem} />}
         {activeViewId === "calendar" && <CalendarView tasks={viewItems} projects={projects} onSelectTask={setSelectedItem} googleAccessToken={googleAccessToken} />}
-        {activeViewId === "planning" && <TableView items={viewItems} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} />}
+        {activeViewId === "planning" && <PlanningView items={viewItems} onUpdate={handleUpdate} onSelect={setSelectedItem} onImplementPlan={handleImplementPlan} />}
         {activeViewId === "habits" && <HabitTracker />}
         {activeViewId === "goals" && <GoalsView items={items} />}
         {activeViewId === "review" && <WeeklyReview items={items} habits={habits} />}
