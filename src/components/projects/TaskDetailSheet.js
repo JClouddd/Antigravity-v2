@@ -29,6 +29,8 @@ export default function TaskDetailSheet({ task, tasks, projects, onUpdate, onDel
   const [timeBlockStart, setTimeBlockStart] = useState(task.timeBlock?.startTime || "");
   const [timeBlockEnd, setTimeBlockEnd] = useState(task.timeBlock?.endTime || "");
   const [deps, setDeps] = useState(task.dependencies || []);
+  const [location, setLocation] = useState(task.location || "");
+  const [notes, setNotes] = useState(task.notes || "");
 
   const project = projects.find((p) => p.id === task.parentId);
   const isProject = task.type === "project";
@@ -36,12 +38,16 @@ export default function TaskDetailSheet({ task, tasks, projects, onUpdate, onDel
   const availableDeps = tasks.filter((t) => t.id !== task.id && t.type !== "project");
 
   const handleSave = () => {
-    onUpdate({
+    const updates = {
       title, description, priority, status,
       startDate: startDate || null, dueDate: dueDate || null,
       timeBlock: timeBlockDate ? { date: timeBlockDate, startTime: timeBlockStart, endTime: timeBlockEnd } : null,
-      dependencies: deps,
-    });
+      dependencies: deps, location, notes,
+    };
+    if (status === "done" && task.status !== "done") {
+      updates.completedAt = new Date().toISOString();
+    }
+    onUpdate(updates);
     onClose();
   };
 
@@ -117,6 +123,18 @@ export default function TaskDetailSheet({ task, tasks, projects, onUpdate, onDel
               <input type="time" value={timeBlockStart} onChange={(e) => setTimeBlockStart(e.target.value)} />
               <input type="time" value={timeBlockEnd} onChange={(e) => setTimeBlockEnd(e.target.value)} />
             </div>
+          </div>
+
+          {/* Location */}
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "block" }}>Location</label>
+            <input type="text" placeholder="Add location..." value={location} onChange={(e) => setLocation(e.target.value)} style={{ fontSize: 14 }} />
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "block" }}>Notes</label>
+            <textarea placeholder="Additional notes..." value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} style={{ fontSize: 13, resize: "vertical" }} />
           </div>
 
           {/* Project: Sub-task list */}

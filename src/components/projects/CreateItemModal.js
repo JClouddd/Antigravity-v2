@@ -25,6 +25,8 @@ export default function CreateItemModal({ projects, activeProject, defaultStatus
   const [timeBlockStart, setTimeBlockStart] = useState("");
   const [timeBlockEnd, setTimeBlockEnd] = useState("");
   const [color, setColor] = useState("#2563eb");
+  const [location, setLocation] = useState("");
+  const [notes, setNotes] = useState("");
 
   // Project sub-tasks (inline creation)
   const [subtasks, setSubtasks] = useState([]);
@@ -72,6 +74,8 @@ export default function CreateItemModal({ projects, activeProject, defaultStatus
         parentId: type === "subtask" ? parentId : null,
         startDate: startDate || null,
         dueDate: dueDate || null,
+        location: location || "",
+        notes: notes || "",
         timeBlock: type === "event" && timeBlockDate ? { date: timeBlockDate, startTime: timeBlockStart, endTime: timeBlockEnd } : null,
       });
     }
@@ -209,6 +213,22 @@ export default function CreateItemModal({ projects, activeProject, defaultStatus
                   <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
                 </div>
               </div>
+
+              {/* Location (events + tasks) */}
+              {(type === "event" || type === "task") && (
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "block" }}>Location</label>
+                  <input type="text" placeholder="Add location..." value={location} onChange={(e) => setLocation(e.target.value)} style={{ fontSize: 14 }} />
+                </div>
+              )}
+
+              {/* Notes */}
+              {(type === "event" || type === "task") && (
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "block" }}>Notes</label>
+                  <textarea placeholder="Additional notes..." value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} style={{ fontSize: 13, resize: "vertical" }} />
+                </div>
+              )}
 
               {/* Event: Time block */}
               {type === "event" && (

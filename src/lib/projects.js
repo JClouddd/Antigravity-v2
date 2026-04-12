@@ -44,13 +44,24 @@ export async function createItem(userId, data) {
 
     // Time blocking (events + tasks)
     timeBlock: data.timeBlock || null,      // { date, startTime, endTime }
+    allDay: data.allDay || false,           // Google Calendar: all-day event
+
+    // Google Calendar fields (full widget compatibility)
+    location: data.location || "",          // Physical or virtual location
+    notes: data.notes || "",               // Additional notes (maps to Google Tasks notes)
+    reminders: data.reminders || [],        // [{ method: "popup"|"email", minutes: 10 }]
+    recurrence: data.recurrence || null,    // RRULE string: "RRULE:FREQ=WEEKLY;BYDAY=MO"
+    attendees: data.attendees || [],        // [{ email: "...", displayName: "..." }]
+    conferenceLink: data.conferenceLink || null, // Google Meet link
+    calendarId: data.calendarId || "primary",
 
     // Dependencies
     dependencies: data.dependencies || [],
 
-    // Google sync
+    // Google sync IDs
     googleCalendarEventId: data.googleCalendarEventId || null,
     googleTaskId: data.googleTaskId || null,
+    googleTaskListId: data.googleTaskListId || null,
 
     // Visual
     color: data.color || "#2563eb",
@@ -62,6 +73,7 @@ export async function createItem(userId, data) {
     // Timestamps
     createdAt: now,
     updatedAt: now,
+    completedAt: data.completedAt || null,  // When marked done
   };
 
   await setDoc(newDoc, item);
