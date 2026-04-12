@@ -42,7 +42,14 @@ export default function ProjectHub() {
   const [loading, setLoading] = useState(true);
   const [habits, setHabits] = useState([]);
   const [timeEntries, setTimeEntries] = useState([]);
-  const enabledRules = ["auto_complete_project", "auto_complete_past_event", "escalate_overdue", "auto_progress"];
+  const enabledRules = settings?.enabledRules || ["auto_complete_project", "auto_complete_past_event", "escalate_overdue", "auto_progress"];
+
+  // Listen for global navigation events (from CMD+K palette)
+  useEffect(() => {
+    const handler = (e) => setActiveViewId(e.detail);
+    window.addEventListener("navigate-view", handler);
+    return () => window.removeEventListener("navigate-view", handler);
+  }, []);
 
   const loadData = useCallback(async () => {
     if (!user) return;
@@ -339,7 +346,7 @@ export default function ProjectHub() {
         {activeViewId === "board" && <KanbanBoard items={viewItems} allItems={items} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} onAddSubtask={handleAddSubtaskToProject} isBlocked={isBlocked} onLogTime={handleLogTime} />}
         {activeViewId === "table" && <TableView items={viewItems} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} isBlocked={isBlocked} />}
         {activeViewId === "timeline" && <GanttTimeline tasks={viewItems} projects={projects} onUpdateTask={handleUpdate} onSelectTask={setSelectedItem} />}
-        {activeViewId === "calendar" && <CalendarView tasks={viewItems} projects={projects} habits={habits} onSelectTask={setSelectedItem} onNavigate={setActiveViewId} googleAccessToken={googleAccessToken} />}
+        {activeViewId === "calendar" && <CalendarView tasks={viewItems} projects={projects} habits={habits} onSelectTask={setSelectedItem} onNavigate={setActiveViewId} onUpdate={handleUpdate} googleAccessToken={googleAccessToken} />}
         {activeViewId === "planning" && <PlanningView items={viewItems} onUpdate={handleUpdate} onSelect={setSelectedItem} onImplementPlan={handleImplementPlan} />}
         {activeViewId === "habits" && <HabitTracker />}
         {activeViewId === "goals" && <GoalsView items={items} />}

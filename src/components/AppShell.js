@@ -9,6 +9,7 @@ import { syncItemToGoogle } from "@/lib/googleSync";
 import ProjectHub from "@/components/projects/ProjectHub";
 import SettingsPage from "@/components/SettingsPage";
 import GeminiWidget from "@/components/GeminiWidget";
+import CommandPalette from "@/components/CommandPalette";
 
 const ICONS = {
   clipboard: (
@@ -30,9 +31,12 @@ const PAGE_COMPONENTS = {
 
 export default function AppShell() {
   const { user, logout, googleAccessToken } = useAuth();
+  const { theme, setTheme, preference } = useTheme();
   const [activePage, setActivePage] = useState("projects");
   const [settings, setSettings] = useState(null);
   const [allItems, setAllItems] = useState([]);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const loadSettings = useCallback(async () => {
     if (!user) return;
@@ -42,11 +46,22 @@ export default function AppShell() {
   }, [user]);
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
-  // Refresh items periodically for Gemini context
   useEffect(() => {
     const interval = setInterval(() => { if (user) getItems(user.uid).then(setAllItems); }, 30000);
     return () => clearInterval(interval);
   }, [user]);
+
+  // CMD+K global shortcut
+  useEffect(() => {
+    const handler = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setCommandOpen(prev => !prev);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   const handleGeminiCreate = async (data) => {
     const item = await createItem(user.uid, data);
@@ -63,7 +78,19 @@ export default function AppShell() {
     setAllItems(prev => prev.map(i => i.id === itemId ? { ...i, ...updates } : i));
   };
 
+  const handleCommandNavigate = (viewId) => {
+    setActivePage("projects");
+    // Use a custom event to tell ProjectHub which view to switch to
+    window.dispatchEvent(new CustomEvent("navigate-view", { detail: viewId }));
+  };
+
   const modules = getActiveModules(settings);
+  const cycleTheme = () => {
+    const order = ["system", "light", "dark"];
+    const next = order[(order.indexOf(preference) + 1) % order.length];
+    setTheme(next);
+  };
+  const themeIcon = preference === "dark" ? "🌙" : preference === "light" ? "☀️" : "🖥";
 
   const renderPage = () => {
     const Component = PAGE_COMPONENTS[activePage];
@@ -87,8 +114,22 @@ export default function AppShell() {
               {mod.label}
             </button>
           ))}
+
+          {/* CMD+K shortcut button */}
+          <button className="nav-item" onClick={() => setCommandOpen(true)} style={{ marginTop: 8, opacity: 0.7 }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            Search
+            <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--text-tertiary)", background: "var(--bg-secondary)", padding: "1px 5px", borderRadius: 4 }}>⌘K</span>
+          </button>
         </nav>
         <div className="sidebar-footer">
+          {/* Theme toggle */}
+          <button className="nav-item" onClick={cycleTheme} title={`Theme: ${preference}`}>
+            <span style={{ fontSize: 16, width: 20, textAlign: "center" }}>{themeIcon}</span>
+            {preference === "system" ? "System" : preference === "dark" ? "Dark" : "Light"}
+          </button>
           <button className="nav-item" onClick={logout}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
@@ -97,6 +138,58 @@ export default function AppShell() {
           </button>
         </div>
       </aside>
+
+      {/* Mobile Top Bar */}
+      <div className="mobile-topbar">
+        <button className="mobile-hamburger" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            {mobileMenuOpen ? <path d="M18 6L6 18M6 6l12 12"/> : <><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></>}
+          </svg>
+        </button>
+        <span className="mobile-topbar-title">Antigravity</span>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="mobile-hamburger" onClick={() => setCommandOpen(true)}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </button>
+          <button className="mobile-hamburger" onClick={cycleTheme}>
+            <span style={{ fontSize: 16 }}>{themeIcon}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile Slide Menu */}
+      {mobileMenuOpen && (
+        <>
+          <div onClick={() => setMobileMenuOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.3)", zIndex: 400 }} />
+          <div style={{
+            position: "fixed", left: 0, top: 0, bottom: 0, width: 260,
+            background: "var(--bg-primary)", zIndex: 401, padding: "20px 12px",
+            borderRight: "1px solid var(--border)",
+            display: "flex", flexDirection: "column",
+          }}>
+            <div style={{ fontSize: 18, fontWeight: 700, padding: "0 8px 16px", borderBottom: "1px solid var(--border)", marginBottom: 12 }}>Antigravity</div>
+            {modules.map((mod) => (
+              <button
+                key={mod.id}
+                className={`nav-item ${activePage === mod.id ? "active" : ""}`}
+                onClick={() => { setActivePage(mod.id); setMobileMenuOpen(false); }}
+                style={{ justifyContent: "flex-start", width: "100%", textAlign: "left", padding: "10px 12px" }}
+              >
+                {ICONS[mod.icon] || ICONS.clipboard}
+                {mod.label}
+              </button>
+            ))}
+            <div style={{ flex: 1 }} />
+            <button className="nav-item" onClick={() => { cycleTheme(); }} style={{ padding: "10px 12px" }}>
+              <span style={{ fontSize: 16 }}>{themeIcon}</span> Theme: {preference}
+            </button>
+            <button className="nav-item" onClick={logout} style={{ padding: "10px 12px" }}>
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              Sign Out
+            </button>
+          </div>
+        </>
+      )}
 
       {/* Main Content */}
       <main className="main-content">
@@ -118,6 +211,16 @@ export default function AppShell() {
           ))}
         </div>
       </nav>
+
+      {/* CMD+K Command Palette */}
+      {commandOpen && (
+        <CommandPalette
+          items={allItems}
+          onSelect={(item) => { setActivePage("projects"); }}
+          onNavigate={handleCommandNavigate}
+          onClose={() => setCommandOpen(false)}
+        />
+      )}
 
       {/* Gemini AI Widget — global */}
       <GeminiWidget settings={settings} items={allItems} onCreateItem={handleGeminiCreate} onUpdateItem={handleGeminiUpdate} />

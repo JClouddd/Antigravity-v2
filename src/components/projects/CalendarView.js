@@ -19,9 +19,10 @@ const TYPE_ICONS = {
   plan: "📋", goal: "🎯", habit: "🔄", journal: "📓",
 };
 
-export default function CalendarView({ tasks, projects, habits, onSelectTask, onNavigate, googleAccessToken }) {
+export default function CalendarView({ tasks, projects, habits, onSelectTask, onNavigate, onUpdate, googleAccessToken }) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [googleEvents, setGoogleEvents] = useState([]);
+  const [dragItem, setDragItem] = useState(null);
 
   // Fetch Google Calendar events
   useEffect(() => {
@@ -156,22 +157,44 @@ export default function CalendarView({ tasks, projects, habits, onSelectTask, on
           const allItems = [...dayItems, ...dayEvents.map(e => ({ id: e.id, title: e.summary, type: "google", _google: true }))];
 
           return (
-            <div key={i} style={{
+            <div key={i}
+              onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.outline = "2px solid var(--accent)"; }}
+              onDragLeave={(e) => { e.currentTarget.style.outline = "none"; }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.currentTarget.style.outline = "none";
+                if (dragItem && onUpdate && isCurrentMonth) {
+                  const newDate = format(day, "yyyy-MM-dd");
+                  const updates = { dueDate: newDate };
+                  if (dragItem.timeBlock?.date) updates.timeBlock = { ...dragItem.timeBlock, date: newDate };
+                  if (dragItem.startDate) updates.startDate = newDate;
+                  onUpdate(dragItem.id, updates);
+                  setDragItem(null);
+                }
+              }}
+              style={{
               minHeight: 80, padding: 4,
               borderRight: (i + 1) % 7 !== 0 ? "1px solid var(--border)" : "none",
               borderBottom: i < calendarDays.length - 7 ? "1px solid var(--border)" : "none",
               background: isToday ? "var(--accent-light)" : !isCurrentMonth ? "var(--bg-secondary)" : "transparent",
               opacity: isCurrentMonth ? 1 : 0.4,
+              transition: "outline 0.1s",
             }}>
               <div style={{ fontSize: 12, fontWeight: isToday ? 700 : 400, color: isToday ? "var(--accent)" : "var(--text-secondary)", padding: "2px 4px" }}>
                 {format(day, "d")}
               </div>
 
               {dayItems.slice(0, 3).map((item) => (
-                <div key={item.id} onClick={() => handleItemClick(item)} style={{
-                  fontSize: 10, padding: "2px 4px", marginTop: 2, borderRadius: 4, cursor: "pointer",
+                <div key={item.id}
+                  draggable={!item._google && item.type !== "habit"}
+                  onDragStart={() => setDragItem(item)}
+                  onDragEnd={() => setDragItem(null)}
+                  onClick={() => handleItemClick(item)}
+                  style={{
+                  fontSize: 10, padding: "2px 4px", marginTop: 2, borderRadius: 4, cursor: "grab",
                   background: getItemColor(item), color: "#fff", fontWeight: 500,
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  opacity: dragItem?.id === item.id ? 0.4 : 1,
                 }}>
                   {TYPE_ICONS[item.type] || ""} {item.timeBlock?.startTime ? `${item.timeBlock.startTime} ` : ""}{item.title}
                 </div>

@@ -31,6 +31,7 @@ export default function TableView({ items, projects, onUpdate, onSelect, isBlock
   const [filterPriority, setFilterPriority] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedProjects, setExpandedProjects] = useState({});
+  const [selectedIds, setSelectedIds] = useState(new Set());
 
   const handleSort = (field) => {
     if (sortField === field) {
@@ -172,11 +173,34 @@ export default function TableView({ items, projects, onUpdate, onSelect, isBlock
         </span>
       </div>
 
+      {/* Bulk Action Bar */}
+      {selectedIds.size > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", marginBottom: 8, background: "var(--accent-light)", borderRadius: "var(--radius-md)", fontSize: 12 }}>
+          <span style={{ fontWeight: 600, color: "var(--accent)" }}>{selectedIds.size} selected</span>
+          <select onChange={(e) => { if (!e.target.value) return; selectedIds.forEach(id => onUpdate(id, { status: e.target.value })); setSelectedIds(new Set()); e.target.value = ""; }} style={{ width: "auto", padding: "4px 8px", fontSize: 12 }}>
+            <option value="">Set Status...</option>
+            {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+          <select onChange={(e) => { if (!e.target.value) return; selectedIds.forEach(id => onUpdate(id, { priority: e.target.value })); setSelectedIds(new Set()); e.target.value = ""; }} style={{ width: "auto", padding: "4px 8px", fontSize: 12 }}>
+            <option value="">Set Priority...</option>
+            <option value="urgent">Urgent</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+          <button onClick={() => { selectedIds.forEach(id => onUpdate(id, { status: "done", completedAt: new Date().toISOString() })); setSelectedIds(new Set()); }} className="btn btn-sm" style={{ fontSize: 11 }}>✓ Mark Done</button>
+          <button onClick={() => setSelectedIds(new Set())} className="btn btn-sm" style={{ fontSize: 11 }}>Clear</button>
+        </div>
+      )}
+
       {/* Table */}
       <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: "var(--radius-md)" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-secondary)" }}>
+              <th style={{ padding: "10px 8px", width: 30 }}>
+                <input type="checkbox" checked={selectedIds.size > 0 && selectedIds.size === sortedItems.length} onChange={(e) => { if (e.target.checked) setSelectedIds(new Set(sortedItems.map(i => i.id))); else setSelectedIds(new Set()); }} style={{ accentColor: "var(--accent)" }} />
+              </th>
               {SORTABLE_FIELDS.map(({ key, label }) => (
                 <th
                   key={key}
@@ -218,6 +242,14 @@ export default function TableView({ items, projects, onUpdate, onSelect, isBlock
                   onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg-hover)"}
                   onMouseLeave={(e) => e.currentTarget.style.background = isProject ? "var(--bg-secondary)" : isSubtask ? "var(--bg-primary)" : "transparent"}
                 >
+                  {/* Checkbox */}
+                  <td style={{ padding: "10px 8px", width: 30 }} onClick={(e) => e.stopPropagation()}>
+                    <input type="checkbox" checked={selectedIds.has(item.id)} onChange={(e) => {
+                      const next = new Set(selectedIds);
+                      if (e.target.checked) next.add(item.id); else next.delete(item.id);
+                      setSelectedIds(next);
+                    }} style={{ accentColor: "var(--accent)" }} />
+                  </td>
                   {/* Title */}
                   <td style={{ padding: "10px 12px", fontWeight: isProject ? 600 : 500 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: isSubtask ? 20 : 0 }}>

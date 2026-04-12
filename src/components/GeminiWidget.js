@@ -121,11 +121,11 @@ export default function GeminiWidget({ settings, items, onCreateItem, onUpdateIt
     if (action === "add" && parts.length >= 3) {
       const type = parts[1].toLowerCase();
       const title = parts.slice(2).join(" ");
-      if (["task", "event", "project"].includes(type) && onCreateItem) {
+      if (["task", "event", "project", "plan", "goal", "habit", "journal"].includes(type) && onCreateItem) {
         await onCreateItem({ type, title, status: "todo", priority: "medium" });
         return `✅ Created ${type}: "${title}"`;
       }
-      return `Unknown type "${type}". Use: task, event, or project.`;
+      return `Unknown type "${type}". Use: task, event, project, plan, goal, habit, or journal.`;
     }
 
     if (action === "done" && parts.length >= 2) {
@@ -136,6 +136,19 @@ export default function GeminiWidget({ settings, items, onCreateItem, onUpdateIt
         return `✅ Marked done: "${match.title}"`;
       }
       return `Couldn't find an active item matching "${search}"`;
+    }
+
+    if (action === "suggest") {
+      const today = new Date().toISOString().split("T")[0];
+      const inProgress = (items || []).filter(i => i.status === "in_progress");
+      const overdue = (items || []).filter(i => i.dueDate && i.dueDate < today && i.status !== "done");
+      let suggestion = "💡 Suggestions:\n";
+      if (overdue.length > 0) suggestion += `• Focus on ${overdue.length} overdue item(s) first\n`;
+      if (inProgress.length > 3) suggestion += `• You have ${inProgress.length} in-progress items — consider finishing some before starting new work\n`;
+      if (inProgress.length === 0) suggestion += `• Nothing in progress — pick your highest priority item and start!\n`;
+      const urgent = (items || []).filter(i => i.priority === "urgent" && i.status !== "done");
+      if (urgent.length > 0) suggestion += `• ${urgent.length} urgent item(s): ${urgent.map(i => i.title).join(", ")}\n`;
+      return suggestion;
     }
 
     return null;
@@ -176,10 +189,11 @@ export default function GeminiWidget({ settings, items, onCreateItem, onUpdateIt
 ${buildContext()}
 
 AVAILABLE COMMANDS (tell the user about these if relevant):
-/add [task|event|project] [title] — Quick create
+/add [task|event|project|plan|goal|habit|journal] [title] — Quick create
 /today — Show today's schedule
 /overdue — Show overdue items
-/done [item name] — Mark complete`;
+/done [item name] — Mark complete
+/suggest — Get task suggestions based on current workload`;
 
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
@@ -269,7 +283,7 @@ AVAILABLE COMMANDS (tell the user about these if relevant):
             <div style={{ fontSize: 28, marginBottom: 8 }}>✨</div>
             <div style={{ fontSize: 13, marginBottom: 12 }}>Ask me anything or use commands:</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "center" }}>
-              {["/today", "/overdue", "/add task Fix bug", "/done task name"].map(c => (
+              {["/today", "/overdue", "/suggest", "/add task Fix bug", "/add goal Learn React", "/done task name"].map(c => (
                 <button key={c} onClick={() => { setInput(c); }}
                   style={{ fontSize: 11, fontFamily: "monospace", color: "var(--accent)", background: "var(--bg-secondary)", border: "none", borderRadius: 4, padding: "3px 8px", cursor: "pointer" }}>
                   {c}

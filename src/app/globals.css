@@ -225,6 +225,43 @@ body {
   height: 22px;
 }
 
+/* ===== Mobile Top Bar ===== */
+.mobile-topbar {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  padding-top: max(8px, env(safe-area-inset-top));
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.mobile-topbar-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.mobile-hamburger {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.mobile-hamburger:hover {
+  background: var(--bg-hover);
+}
+
 /* ===== Mobile Responsive ===== */
 @media (max-width: 768px) {
   .sidebar {
@@ -233,6 +270,10 @@ body {
 
   .mobile-tabs {
     display: block;
+  }
+
+  .mobile-topbar {
+    display: flex;
   }
 
   .app-shell {
@@ -356,6 +397,7 @@ body {
 input[type="text"],
 input[type="email"],
 input[type="date"],
+input[type="time"],
 textarea,
 select {
   width: 100%;
