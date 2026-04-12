@@ -7,6 +7,11 @@ export default function GeminiWidget({ settings, items, onCreateItem, onUpdateIt
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [chatHistory, setChatHistory] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("gemini_history") || "[]"); } catch { return []; }
+  });
+  const [activeChatId, setActiveChatId] = useState(null);
 
   // Drag state
   const [pos, setPos] = useState(() => {
@@ -31,6 +36,37 @@ export default function GeminiWidget({ settings, items, onCreateItem, onUpdateIt
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages]);
+
+  // Auto-save current conversation when messages change
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const saveConversation = () => {
+      try {
+        const history = JSON.parse(localStorage.getItem("gemini_history") || "[]");
+        const firstUserMsg = messages.find(m => m.role === "user");
+        const label = firstUserMsg?.text?.slice(0, 40) || "Untitled";
+        const existing = activeChatId ? history.findIndex(h => h.id === activeChatId) : -1;
+        const entry = {
+          id: activeChatId || `chat_${Date.now()}`,
+          label,
+          messages,
+          updatedAt: new Date().toISOString(),
+          createdAt: existing >= 0 ? history[existing].createdAt : new Date().toISOString(),
+        };
+        if (!activeChatId) setActiveChatId(entry.id);
+        if (existing >= 0) {
+          history[existing] = entry;
+        } else {
+          history.unshift(entry);
+        }
+        // Keep max 20 conversations
+        const trimmed = history.slice(0, 20);
+        localStorage.setItem("gemini_history", JSON.stringify(trimmed));
+        setChatHistory(trimmed);
+      } catch (e) { console.error("Chat save error:", e); }
+    };
+    saveConversation();
   }, [messages]);
 
   // Drag handlers — use refs instead of state to avoid the click race condition
@@ -265,16 +301,57 @@ AVAILABLE COMMANDS (tell the user about these if relevant):
     }}>
       {/* Header */}
       <div style={{
-        display: "flex", alignItems: "center", gap: 10, padding: "12px 16px",
+        display: "flex", alignItems: "center", gap: 8, padding: "12px 16px",
         background: "linear-gradient(135deg, #4285f4, #7c3aed)", color: "white",
       }}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
           <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 007.92 12.446A9 9 0 1112 3z"/>
         </svg>
         <span style={{ fontSize: 14, fontWeight: 600, flex: 1 }}>Antigravity AI</span>
-        <button onClick={() => setMessages([])} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.7)", cursor: "pointer", fontSize: 12 }}>Clear</button>
+        <button onClick={() => setShowHistory(!showHistory)} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.7)", cursor: "pointer", fontSize: 12, padding: "2px 6px", borderRadius: 4, ...(showHistory ? { background: "rgba(255,255,255,0.2)", color: "white" } : {}) }} title="Chat History">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </button>
+        <button onClick={() => { setMessages([]); setActiveChatId(null); setShowHistory(false); }} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.7)", cursor: "pointer", fontSize: 12 }} title="New Chat">+</button>
         <button onClick={() => setOpen(false)} style={{ background: "none", border: "none", color: "white", cursor: "pointer", fontSize: 16, fontWeight: 600 }}>✕</button>
       </div>
+
+      {/* History Panel */}
+      {showHistory && (
+        <div style={{ maxHeight: 260, overflowY: "auto", borderBottom: "1px solid var(--border)", background: "var(--bg-secondary)" }}>
+          <div style={{ padding: "8px 12px", fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", borderBottom: "1px solid var(--border)" }}>
+            Chat History ({chatHistory.length})
+          </div>
+          {chatHistory.length === 0 && (
+            <div style={{ padding: "16px", textAlign: "center", color: "var(--text-tertiary)", fontSize: 12 }}>No saved conversations</div>
+          )}
+          {chatHistory.map((chat) => (
+            <div key={chat.id} style={{
+              display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
+              cursor: "pointer", borderBottom: "1px solid var(--border)",
+              background: activeChatId === chat.id ? "var(--accent-light)" : "transparent",
+              transition: "background 0.1s",
+            }}
+              onMouseEnter={(e) => e.currentTarget.style.background = activeChatId === chat.id ? "var(--accent-light)" : "var(--bg-hover)"}
+              onMouseLeave={(e) => e.currentTarget.style.background = activeChatId === chat.id ? "var(--accent-light)" : "transparent"}
+              onClick={() => { setMessages(chat.messages); setActiveChatId(chat.id); setShowHistory(false); }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{chat.label}</div>
+                <div style={{ fontSize: 10, color: "var(--text-tertiary)" }}>
+                  {chat.messages?.length || 0} messages · {new Date(chat.updatedAt).toLocaleDateString()}
+                </div>
+              </div>
+              <button onClick={(e) => {
+                e.stopPropagation();
+                const updated = chatHistory.filter(c => c.id !== chat.id);
+                localStorage.setItem("gemini_history", JSON.stringify(updated));
+                setChatHistory(updated);
+                if (activeChatId === chat.id) { setMessages([]); setActiveChatId(null); }
+              }} style={{ background: "none", border: "none", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 12, padding: "2px 4px" }} title="Delete">×</button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Messages */}
       <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>

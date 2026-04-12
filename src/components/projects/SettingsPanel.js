@@ -14,8 +14,10 @@ const REMINDER_OPTIONS = [
 
 export default function SettingsPanel({ settings, onSave, onClose }) {
   const [views, setViews] = useState([...(settings?.views || [])]);
+  const [modules, setModules] = useState([...(settings?.modules || [])]);
   const [moduleName, setModuleName] = useState(settings?.moduleName || "Projects");
   const [dragIdx, setDragIdx] = useState(null);
+  const [dragSection, setDragSection] = useState(null); // "views" or "modules"
 
   // Automation rules
   const availableRules = getAvailableRules();
@@ -26,29 +28,35 @@ export default function SettingsPanel({ settings, onSave, onClose }) {
   const [overdueAlerts, setOverdueAlerts] = useState(settings?.overdueAlerts !== false);
   const [habitReminders, setHabitReminders] = useState(settings?.habitReminders !== false);
 
-  const handleRename = (idx, newLabel) => {
-    const updated = [...views];
+  // ── Generic drag handler for both views and modules ──
+  const makeDragHandlers = (list, setList, section) => ({
+    onDragStart: (idx) => { setDragIdx(idx); setDragSection(section); },
+    onDragOver: (e, idx) => {
+      e.preventDefault();
+      if (dragSection !== section || dragIdx === null || dragIdx === idx) return;
+      const updated = [...list];
+      const [moved] = updated.splice(dragIdx, 1);
+      updated.splice(idx, 0, moved);
+      setList(updated);
+      setDragIdx(idx);
+    },
+    onDragEnd: () => { setDragIdx(null); setDragSection(null); },
+  });
+
+  const viewDrag = makeDragHandlers(views, setViews, "views");
+  const modDrag = makeDragHandlers(modules, setModules, "modules");
+
+  const handleRename = (list, setList, idx, newLabel) => {
+    const updated = [...list];
     updated[idx] = { ...updated[idx], label: newLabel };
-    setViews(updated);
+    setList(updated);
   };
 
-  const handleToggle = (idx) => {
-    const updated = [...views];
+  const handleToggle = (list, setList, idx) => {
+    const updated = [...list];
     updated[idx] = { ...updated[idx], enabled: !updated[idx].enabled };
-    setViews(updated);
+    setList(updated);
   };
-
-  const handleDragStart = (idx) => setDragIdx(idx);
-  const handleDragOver = (e, idx) => {
-    e.preventDefault();
-    if (dragIdx === null || dragIdx === idx) return;
-    const updated = [...views];
-    const [moved] = updated.splice(dragIdx, 1);
-    updated.splice(idx, 0, moved);
-    setViews(updated);
-    setDragIdx(idx);
-  };
-  const handleDragEnd = () => setDragIdx(null);
 
   const toggleRule = (ruleId) => {
     setEnabledRules(prev =>
@@ -57,7 +65,7 @@ export default function SettingsPanel({ settings, onSave, onClose }) {
   };
 
   const handleSave = () => {
-    onSave({ views, moduleName, enabledRules, defaultReminder, overdueAlerts, habitReminders });
+    onSave({ views, modules, moduleName, enabledRules, defaultReminder, overdueAlerts, habitReminders });
     onClose();
   };
 
@@ -81,6 +89,43 @@ export default function SettingsPanel({ settings, onSave, onClose }) {
           transition: "left 0.2s", boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
         }} />
       </button>
+    </div>
+  );
+
+  // Reusable draggable list row
+  const DraggableRow = ({ item, idx, dragHandlers, isActive, onToggle, onRename }) => (
+    <div
+      draggable
+      onDragStart={() => dragHandlers.onDragStart(idx)}
+      onDragOver={(e) => dragHandlers.onDragOver(e, idx)}
+      onDragEnd={dragHandlers.onDragEnd}
+      style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "8px 10px", background: isActive ? "var(--accent-light)" : "var(--bg-secondary)",
+        borderRadius: "var(--radius-sm)", cursor: "grab",
+        opacity: item.enabled ? 1 : 0.5, transition: "background 0.1s",
+      }}
+    >
+      <span style={{ color: "var(--text-tertiary)", cursor: "grab", fontSize: 14 }}>⠿</span>
+      <button
+        onClick={onToggle}
+        style={{
+          width: 16, height: 16, borderRadius: 3, flexShrink: 0, cursor: "pointer",
+          border: item.enabled ? "none" : "2px solid var(--border)",
+          background: item.enabled ? "var(--accent)" : "transparent",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}
+      >
+        {item.enabled && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
+      </button>
+      <input
+        type="text" value={item.label}
+        onChange={(e) => onRename(e.target.value)}
+        style={{ flex: 1, fontSize: 13, fontWeight: 500, padding: "4px 6px", border: "1px solid transparent", borderRadius: 4, background: "transparent" }}
+        onFocus={(e) => e.target.style.borderColor = "var(--border)"}
+        onBlur={(e) => e.target.style.borderColor = "transparent"}
+      />
+      <span style={{ fontSize: 9, color: "var(--text-tertiary)", fontFamily: "monospace" }}>{item.id}</span>
     </div>
   );
 
@@ -109,45 +154,37 @@ export default function SettingsPanel({ settings, onSave, onClose }) {
             </div>
           </div>
 
+          {/* ── Sidebar Modules ── */}
+          <div>
+            <SectionLabel>📌 Sidebar Modules (drag to reorder)</SectionLabel>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {modules.map((mod, idx) => (
+                <DraggableRow
+                  key={mod.id} item={mod} idx={idx}
+                  dragHandlers={modDrag}
+                  isActive={dragSection === "modules" && dragIdx === idx}
+                  onToggle={() => handleToggle(modules, setModules, idx)}
+                  onRename={(val) => handleRename(modules, setModules, idx, val)}
+                />
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4 }}>
+              Reorder or hide sidebar modules. These appear in the left navigation.
+            </div>
+          </div>
+
           {/* ── View Tabs ── */}
           <div>
-            <SectionLabel>Views (drag to reorder)</SectionLabel>
+            <SectionLabel>📋 Views (drag to reorder)</SectionLabel>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {views.map((view, idx) => (
-                <div
-                  key={view.id}
-                  draggable
-                  onDragStart={() => handleDragStart(idx)}
-                  onDragOver={(e) => handleDragOver(e, idx)}
-                  onDragEnd={handleDragEnd}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 8,
-                    padding: "8px 10px", background: dragIdx === idx ? "var(--accent-light)" : "var(--bg-secondary)",
-                    borderRadius: "var(--radius-sm)", cursor: "grab",
-                    opacity: view.enabled ? 1 : 0.5, transition: "background 0.1s",
-                  }}
-                >
-                  <span style={{ color: "var(--text-tertiary)", cursor: "grab", fontSize: 14 }}>⠿</span>
-                  <button
-                    onClick={() => handleToggle(idx)}
-                    style={{
-                      width: 16, height: 16, borderRadius: 3, flexShrink: 0, cursor: "pointer",
-                      border: view.enabled ? "none" : "2px solid var(--border)",
-                      background: view.enabled ? "var(--accent)" : "transparent",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                    }}
-                  >
-                    {view.enabled && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
-                  </button>
-                  <input
-                    type="text" value={view.label}
-                    onChange={(e) => handleRename(idx, e.target.value)}
-                    style={{ flex: 1, fontSize: 13, fontWeight: 500, padding: "4px 6px", border: "1px solid transparent", borderRadius: 4, background: "transparent" }}
-                    onFocus={(e) => e.target.style.borderColor = "var(--border)"}
-                    onBlur={(e) => e.target.style.borderColor = "transparent"}
-                  />
-                  <span style={{ fontSize: 9, color: "var(--text-tertiary)", fontFamily: "monospace" }}>{view.id}</span>
-                </div>
+                <DraggableRow
+                  key={view.id} item={view} idx={idx}
+                  dragHandlers={viewDrag}
+                  isActive={dragSection === "views" && dragIdx === idx}
+                  onToggle={() => handleToggle(views, setViews, idx)}
+                  onRename={(val) => handleRename(views, setViews, idx, val)}
+                />
               ))}
             </div>
           </div>
