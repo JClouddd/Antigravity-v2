@@ -12,6 +12,7 @@ const DEFAULT_VIEWS = [
   { id: "habits", label: "Habits", enabled: true },
   { id: "goals", label: "Goals", enabled: true },
   { id: "review", label: "Review", enabled: true },
+  { id: "time", label: "Time", enabled: true },
 ];
 
 // Default module configuration (sidebar / main navigation)

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import TimeTracker from "./TimeTracker";
 
 const COLUMNS = [
   { key: "todo", label: "To Do" },
@@ -13,7 +14,7 @@ const TYPE_TAG = { project: "PRJ", task: "TSK", subtask: "SUB", event: "EVT", pl
 const TYPE_TAG_COLOR = { project: "#7c3aed", task: "#2563eb", subtask: "#6b7280", event: "#059669", plan: "#d97706", goal: "#dc2626", habit: "#059669", journal: "#8b5cf6" };
 const PRIORITY_DOT = { urgent: "#dc2626", high: "#d97706", medium: "#2563eb", low: "#94a3b8" };
 
-export default function KanbanBoard({ items, allItems, projects, onUpdate, onSelect, onAddSubtask }) {
+export default function KanbanBoard({ items, allItems, projects, onUpdate, onSelect, onAddSubtask, onLogTime }) {
   const [dragging, setDragging] = useState(null);
   const [expandedProjects, setExpandedProjects] = useState({});
 
@@ -169,6 +170,7 @@ export default function KanbanBoard({ items, allItems, projects, onUpdate, onSel
                             <div style={{ width: 6, height: 6, borderRadius: "50%", background: PRIORITY_DOT[item.priority] || PRIORITY_DOT.medium, flexShrink: 0 }} />
                             <span style={{ fontSize: 9, fontWeight: 700, color: TYPE_TAG_COLOR[item.type], background: `${TYPE_TAG_COLOR[item.type]}15`, padding: "1px 4px", borderRadius: 3, flexShrink: 0, letterSpacing: "0.03em" }}>{TYPE_TAG[item.type]}</span>
                             <span style={{ fontSize: 13, fontWeight: 500, flex: 1, textDecoration: isDone ? "line-through" : "none", color: isDone ? "var(--text-tertiary)" : "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
+                            {onLogTime && <TimeTracker item={item} onLogTime={onLogTime} />}
                             <DoneBtn item={item} isDone={isDone} />
                             <EditBtn item={item} />
                           </div>

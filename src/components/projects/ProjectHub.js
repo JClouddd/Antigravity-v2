@@ -19,6 +19,7 @@ import PlanningView from "./PlanningView";
 import TaskDetailSheet from "./TaskDetailSheet";
 import CreateItemModal from "./CreateItemModal";
 import SettingsPanel from "./SettingsPanel";
+import TimeDashboard from "./TimeDashboard";
 
 const VIEW_COMPONENTS = {
   today: "Today",
@@ -343,6 +344,7 @@ export default function ProjectHub() {
         {activeViewId === "habits" && <HabitTracker />}
         {activeViewId === "goals" && <GoalsView items={items} />}
         {activeViewId === "review" && <WeeklyReview items={items} habits={habits} onCreateJournal={handleCreate} />}
+        {activeViewId === "time" && <TimeDashboard timeEntries={timeEntries} items={items} projects={projects} />}
 
         {selectedItem && (
           <TaskDetailSheet
@@ -351,6 +353,8 @@ export default function ProjectHub() {
             onDelete={() => handleDelete(selectedItem.id)}
             onClose={() => setSelectedItem(null)}
             onAddSubtask={() => handleAddSubtaskToProject(selectedItem.id)}
+            timeEntries={timeEntries}
+            onLogTime={handleLogTime}
           />
         )}
       </div>

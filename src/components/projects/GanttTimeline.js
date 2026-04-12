@@ -1,15 +1,50 @@
 "use client";
 
-import { useMemo } from "react";
-import { format, addDays, differenceInDays, startOfWeek, endOfWeek, eachDayOfInterval } from "date-fns";
+import { useState, useMemo } from "react";
+import { format, addDays, differenceInDays, startOfWeek, eachDayOfInterval } from "date-fns";
 
 const STATUS_COLORS = {
   todo: "var(--text-tertiary)",
   in_progress: "var(--accent)",
   done: "var(--success)",
+  planning: "#7c3aed",
+  active: "#059669",
+};
+
+const TYPE_ICONS = {
+  project: "📁", task: "✅", subtask: "↳", event: "📅",
+  plan: "📋", goal: "🎯", habit: "🔄", journal: "📓",
 };
 
 export default function GanttTimeline({ tasks, projects, onUpdateTask, onSelectTask }) {
+  const [expandedProjects, setExpandedProjects] = useState({});
+
+  const toggleProject = (id) => setExpandedProjects(p => ({ ...p, [id]: p[id] === false ? true : (p[id] === undefined ? false : !p[id]) }));
+
+  // Order: projects first, then their subtasks, then standalone items
+  const orderedTasks = useMemo(() => {
+    const ordered = [];
+    const used = new Set();
+
+    // Projects with subtasks
+    const projectItems = tasks.filter(t => t.type === "project");
+    for (const p of projectItems) {
+      ordered.push(p);
+      used.add(p.id);
+      if (expandedProjects[p.id] !== false) { // default expanded
+        const subs = tasks.filter(t => t.parentId === p.id).sort((a, b) => (a.dueDate || "z").localeCompare(b.dueDate || "z"));
+        for (const s of subs) { ordered.push(s); used.add(s.id); }
+      }
+    }
+
+    // Standalone items
+    for (const t of tasks) {
+      if (!used.has(t.id) && t.type !== "subtask") { ordered.push(t); used.add(t.id); }
+    }
+
+    return ordered;
+  }, [tasks, expandedProjects]);
+
   // Calculate timeline range
   const { timelineDays, startDate } = useMemo(() => {
     const now = new Date();
@@ -23,16 +58,23 @@ export default function GanttTimeline({ tasks, projects, onUpdateTask, onSelectT
   const rowHeight = 40;
 
   const getTaskPosition = (task) => {
-    const tStart = task.startDate ? new Date(task.startDate) : new Date();
+    const tStart = task.startDate ? new Date(task.startDate) : (task.dueDate ? new Date(task.dueDate) : new Date());
     const tEnd = task.dueDate ? new Date(task.dueDate) : addDays(tStart, 3);
     const left = Math.max(0, differenceInDays(tStart, startDate)) * dayWidth;
     const width = Math.max(1, differenceInDays(tEnd, tStart) + 1) * dayWidth;
     return { left, width };
   };
 
-  const getProjectColor = (projectId) => {
-    const p = projects.find((pr) => pr.id === projectId);
+  const getItemColor = (item) => {
+    if (item.color) return item.color;
+    const p = projects.find(pr => pr.id === item.parentId);
     return p?.color || "var(--accent)";
+  };
+
+  const getSubCount = (projectId) => {
+    const subs = tasks.filter(t => t.parentId === projectId);
+    const done = subs.filter(t => t.status === "done").length;
+    return { total: subs.length, done };
   };
 
   if (tasks.length === 0) {
@@ -49,10 +91,10 @@ export default function GanttTimeline({ tasks, projects, onUpdateTask, onSelectT
 
   return (
     <div style={{ overflow: "auto", borderRadius: "var(--radius-lg)", border: "1px solid var(--border)" }}>
-      <div style={{ display: "flex", minWidth: timelineDays.length * dayWidth + 200 }}>
+      <div style={{ display: "flex", minWidth: timelineDays.length * dayWidth + 220 }}>
         {/* Task Labels Column */}
         <div style={{
-          width: 200, flexShrink: 0, borderRight: "1px solid var(--border)",
+          width: 220, flexShrink: 0, borderRight: "1px solid var(--border)",
           background: "var(--bg-secondary)", position: "sticky", left: 0, zIndex: 2,
         }}>
           {/* Header */}
@@ -64,29 +106,52 @@ export default function GanttTimeline({ tasks, projects, onUpdateTask, onSelectT
             Task
           </div>
           {/* Rows */}
-          {tasks.map((task) => (
-            <div
-              key={task.id}
-              onClick={() => onSelectTask(task)}
-              style={{
-                height: rowHeight, borderBottom: "1px solid var(--border)",
-                display: "flex", alignItems: "center", padding: "0 12px",
-                fontSize: 13, cursor: "pointer", gap: 8,
-              }}
-            >
-              <div style={{
-                width: 8, height: 8, borderRadius: "50%",
-                background: STATUS_COLORS[task.status] || "var(--text-tertiary)",
-                flexShrink: 0,
-              }} />
-              <span style={{
-                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                fontWeight: 500,
-              }}>
-                {task.title}
-              </span>
-            </div>
-          ))}
+          {orderedTasks.map((task) => {
+            const isProject = task.type === "project";
+            const isSubtask = task.type === "subtask";
+            const subInfo = isProject ? getSubCount(task.id) : null;
+            const isExpanded = expandedProjects[task.id] !== false;
+
+            return (
+              <div
+                key={task.id}
+                onClick={() => onSelectTask(task)}
+                style={{
+                  height: rowHeight, borderBottom: "1px solid var(--border)",
+                  display: "flex", alignItems: "center", padding: "0 12px",
+                  fontSize: 13, cursor: "pointer", gap: 6,
+                  background: isProject ? "var(--bg-secondary)" : "transparent",
+                  paddingLeft: isSubtask ? 28 : 12,
+                }}
+              >
+                {isProject && (
+                  <div
+                    onClick={(e) => { e.stopPropagation(); toggleProject(task.id); }}
+                    style={{ cursor: "pointer", transition: "transform 0.15s", transform: isExpanded ? "rotate(0deg)" : "rotate(-90deg)", color: "var(--text-tertiary)", display: "flex", flexShrink: 0 }}
+                  >
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+                  </div>
+                )}
+                <div style={{
+                  width: 8, height: 8, borderRadius: "50%",
+                  background: isProject ? (task.color || "var(--accent)") : STATUS_COLORS[task.status] || "var(--text-tertiary)",
+                  flexShrink: 0,
+                }} />
+                <span style={{ fontSize: 11 }}>{TYPE_ICONS[task.type] || ""}</span>
+                <span style={{
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  fontWeight: isProject ? 600 : 500, flex: 1,
+                  color: task.status === "done" ? "var(--text-tertiary)" : "var(--text-primary)",
+                  textDecoration: task.status === "done" ? "line-through" : "none",
+                }}>
+                  {task.title}
+                </span>
+                {isProject && subInfo && subInfo.total > 0 && (
+                  <span style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }}>{subInfo.done}/{subInfo.total}</span>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {/* Timeline Grid */}
@@ -113,17 +178,13 @@ export default function GanttTimeline({ tasks, projects, onUpdateTask, onSelectT
           </div>
 
           {/* Task Bars */}
-          {tasks.map((task, rowIndex) => {
+          {orderedTasks.map((task, rowIndex) => {
             const { left, width } = getTaskPosition(task);
-            const color = getProjectColor(task.projectId);
+            const color = getItemColor(task);
+            const isProject = task.type === "project";
+
             return (
-              <div
-                key={task.id}
-                style={{
-                  height: rowHeight, borderBottom: "1px solid var(--border)",
-                  position: "relative",
-                }}
-              >
+              <div key={task.id} style={{ height: rowHeight, borderBottom: "1px solid var(--border)", position: "relative" }}>
                 {/* Background grid */}
                 <div style={{ display: "flex", height: "100%" }}>
                   {timelineDays.map((day, i) => {
@@ -142,44 +203,65 @@ export default function GanttTimeline({ tasks, projects, onUpdateTask, onSelectT
                   onClick={() => onSelectTask(task)}
                   style={{
                     position: "absolute",
-                    top: 8, left, width: Math.max(width, dayWidth),
-                    height: rowHeight - 16,
+                    top: isProject ? 6 : 8,
+                    left,
+                    width: Math.max(width, dayWidth),
+                    height: isProject ? rowHeight - 12 : rowHeight - 16,
                     background: task.status === "done" ? "var(--success)" : color,
-                    opacity: task.status === "done" ? 0.6 : 0.85,
-                    borderRadius: 6,
+                    opacity: task.status === "done" ? 0.5 : 0.85,
+                    borderRadius: isProject ? 8 : 6,
                     cursor: "pointer",
                     display: "flex", alignItems: "center",
                     padding: "0 8px",
-                    fontSize: 11, fontWeight: 500, color: "#fff",
+                    fontSize: 11, fontWeight: isProject ? 600 : 500, color: "#fff",
                     overflow: "hidden", whiteSpace: "nowrap",
                     transition: "opacity 0.15s",
+                    border: isProject ? "2px solid rgba(255,255,255,0.3)" : "none",
                   }}
                 >
                   {width > dayWidth * 2 ? task.title : ""}
                 </div>
                 {/* Dependency arrows */}
                 {task.dependencies?.map((depId) => {
-                  const depIndex = tasks.findIndex((t) => t.id === depId);
+                  const depIndex = orderedTasks.findIndex((t) => t.id === depId);
                   if (depIndex < 0) return null;
-                  const depTask = tasks[depIndex];
+                  const depTask = orderedTasks[depIndex];
                   const depPos = getTaskPosition(depTask);
                   const fromX = depPos.left + depPos.width;
                   const fromY = depIndex * rowHeight + rowHeight / 2;
                   const toX = left;
                   const toY = rowIndex * rowHeight + rowHeight / 2;
                   return (
-                    <svg
-                      key={depId}
-                      style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none", overflow: "visible" }}
-                    >
+                    <svg key={depId} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none", overflow: "visible" }}>
+                      <defs>
+                        <marker id={`arrow-${depId}`} markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+                          <polygon points="0 0, 8 3, 0 6" fill="var(--text-tertiary)" />
+                        </marker>
+                      </defs>
                       <line x1={fromX} y1={fromY - rowIndex * rowHeight} x2={toX} y2={toY - rowIndex * rowHeight}
-                        stroke="var(--text-tertiary)" strokeWidth="1.5" strokeDasharray="4 2" />
+                        stroke="var(--text-tertiary)" strokeWidth="1.5" strokeDasharray="4 2"
+                        markerEnd={`url(#arrow-${depId})`} />
                     </svg>
                   );
                 })}
               </div>
             );
           })}
+
+          {/* Today line */}
+          {(() => {
+            const todayIdx = differenceInDays(new Date(), startDate);
+            if (todayIdx >= 0 && todayIdx < timelineDays.length) {
+              return (
+                <div style={{
+                  position: "absolute", top: 48, bottom: 0,
+                  left: todayIdx * dayWidth + dayWidth / 2,
+                  width: 2, background: "var(--error)", zIndex: 5, opacity: 0.6,
+                }} />
+              );
+            }
+            return null;
+          })()}
         </div>
       </div>
     </div>

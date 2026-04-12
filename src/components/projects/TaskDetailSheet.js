@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import TimeTracker, { TimeLog } from "./TimeTracker";
 
 const PRIORITIES = ["low", "medium", "high", "urgent"];
 const STATUSES = [
@@ -10,7 +11,10 @@ const STATUSES = [
   { key: "done", label: "Done" },
   { key: "archived", label: "Archived" },
 ];
-const TYPE_LABELS = { project: "📁 Project", task: "✅ Task", subtask: "↳ Sub-task", event: "📅 Event" };
+const TYPE_LABELS = {
+  project: "📁 Project", task: "✅ Task", subtask: "↳ Sub-task", event: "📅 Event",
+  plan: "📋 Plan", goal: "🎯 Goal", habit: "🔄 Habit", journal: "📓 Journal",
+};
 const PRIORITY_STYLES = {
   urgent: { background: "var(--error-light)", color: "var(--error)" },
   high: { background: "var(--warning-light)", color: "var(--warning)" },
@@ -18,7 +22,7 @@ const PRIORITY_STYLES = {
   low: { background: "var(--bg-secondary)", color: "var(--text-secondary)" },
 };
 
-export default function TaskDetailSheet({ task, tasks, projects, onUpdate, onDelete, onClose, onAddSubtask }) {
+export default function TaskDetailSheet({ task, tasks, projects, onUpdate, onDelete, onClose, onAddSubtask, timeEntries, onLogTime }) {
   const [title, setTitle] = useState(task.title || "");
   const [description, setDescription] = useState(task.description || "");
   const [priority, setPriority] = useState(task.priority || "medium");
@@ -36,6 +40,7 @@ export default function TaskDetailSheet({ task, tasks, projects, onUpdate, onDel
   const isProject = task.type === "project";
   const subtasks = isProject ? tasks.filter((t) => t.parentId === task.id) : [];
   const availableDeps = tasks.filter((t) => t.id !== task.id && t.type !== "project");
+  const itemTimeEntries = (timeEntries || []).filter(e => e.itemId === task.id);
 
   const handleSave = () => {
     const updates = {
@@ -50,6 +55,10 @@ export default function TaskDetailSheet({ task, tasks, projects, onUpdate, onDel
     onUpdate(updates);
     onClose();
   };
+
+  const SectionLabel = ({ children }) => (
+    <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "block" }}>{children}</label>
+  );
 
   return (
     <>
@@ -71,7 +80,11 @@ export default function TaskDetailSheet({ task, tasks, projects, onUpdate, onDel
             <span style={{ fontSize: 13, fontWeight: 600 }}>{TYPE_LABELS[task.type] || "Item"}</span>
             {task.source === "antigravity" && <span style={{ fontSize: 11, color: "var(--accent)" }}>🤖 AI</span>}
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {/* Time Tracker */}
+            {(task.type === "task" || task.type === "subtask" || task.type === "event") && onLogTime && (
+              <TimeTracker item={task} onLogTime={onLogTime} />
+            )}
             <button className="btn btn-sm" style={{ color: "var(--error)" }} onClick={onDelete}>Delete</button>
             <button className="btn btn-sm" onClick={onClose}>✕</button>
           </div>
@@ -80,24 +93,24 @@ export default function TaskDetailSheet({ task, tasks, projects, onUpdate, onDel
         {/* Body */}
         <div style={{ flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "block" }}>Title</label>
+            <SectionLabel>Title</SectionLabel>
             <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} style={{ fontSize: 16 }} />
           </div>
 
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "block" }}>Description</label>
+            <SectionLabel>Description</SectionLabel>
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} style={{ resize: "vertical", fontSize: 14 }} />
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "block" }}>Status</label>
+              <SectionLabel>Status</SectionLabel>
               <select value={status} onChange={(e) => setStatus(e.target.value)}>
                 {STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
               </select>
             </div>
             <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "block" }}>Priority</label>
+              <SectionLabel>Priority</SectionLabel>
               <select value={priority} onChange={(e) => setPriority(e.target.value)}>
                 {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
@@ -106,18 +119,18 @@ export default function TaskDetailSheet({ task, tasks, projects, onUpdate, onDel
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "block" }}>Start</label>
+              <SectionLabel>Start</SectionLabel>
               <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             </div>
             <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "block" }}>Due</label>
+              <SectionLabel>Due</SectionLabel>
               <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
             </div>
           </div>
 
           {/* Time Block */}
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "block" }}>Time Block</label>
+            <SectionLabel>Time Block</SectionLabel>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
               <input type="date" value={timeBlockDate} onChange={(e) => setTimeBlockDate(e.target.value)} />
               <input type="time" value={timeBlockStart} onChange={(e) => setTimeBlockStart(e.target.value)} />
@@ -127,27 +140,45 @@ export default function TaskDetailSheet({ task, tasks, projects, onUpdate, onDel
 
           {/* Location */}
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "block" }}>Location</label>
+            <SectionLabel>Location</SectionLabel>
             <input type="text" placeholder="Add location..." value={location} onChange={(e) => setLocation(e.target.value)} style={{ fontSize: 14 }} />
           </div>
 
           {/* Notes */}
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "block" }}>Notes</label>
+            <SectionLabel>Notes</SectionLabel>
             <textarea placeholder="Additional notes..." value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} style={{ fontSize: 13, resize: "vertical" }} />
           </div>
+
+          {/* Time Logged */}
+          {itemTimeEntries.length > 0 && (
+            <div>
+              <SectionLabel>Time Logged</SectionLabel>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {itemTimeEntries.map((entry, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "6px 8px", background: "var(--bg-secondary)", borderRadius: "var(--radius-sm)" }}>
+                    <span style={{ color: "var(--text-secondary)" }}>
+                      {new Date(entry.startedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })} {new Date(entry.startedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                    </span>
+                    <span style={{ fontFamily: "monospace", fontWeight: 600, color: "var(--accent)" }}>
+                      {Math.floor(entry.duration / 3600) > 0 ? `${Math.floor(entry.duration / 3600)}h ` : ""}{Math.floor((entry.duration % 3600) / 60)}m
+                    </span>
+                  </div>
+                ))}
+                <div style={{ textAlign: "right", marginTop: 4 }}>
+                  <TimeLog entries={itemTimeEntries} />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Project: Sub-task list */}
           {isProject && (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)" }}>
-                  Sub-tasks ({subtasks.filter(s => s.status === "done").length}/{subtasks.length})
-                </label>
+                <SectionLabel>Sub-tasks ({subtasks.filter(s => s.status === "done").length}/{subtasks.length})</SectionLabel>
                 <button className="btn btn-sm" onClick={() => { onClose(); setTimeout(() => onAddSubtask(), 100); }}
-                  style={{ fontSize: 11, padding: "3px 8px" }}>
-                  + Add
-                </button>
+                  style={{ fontSize: 11, padding: "3px 8px" }}>+ Add</button>
               </div>
               {subtasks.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -156,17 +187,8 @@ export default function TaskDetailSheet({ task, tasks, projects, onUpdate, onDel
                       display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
                       background: "var(--bg-secondary)", borderRadius: "var(--radius-sm)", fontSize: 13,
                     }}>
-                      <input
-                        type="checkbox"
-                        checked={st.status === "done"}
-                        onChange={() => {}} // Handled by parent
-                        style={{ accentColor: "var(--accent)" }}
-                      />
-                      <span style={{
-                        flex: 1, fontWeight: 500,
-                        textDecoration: st.status === "done" ? "line-through" : "none",
-                        color: st.status === "done" ? "var(--text-tertiary)" : "var(--text-primary)",
-                      }}>
+                      <input type="checkbox" checked={st.status === "done"} onChange={() => {}} style={{ accentColor: "var(--accent)" }} />
+                      <span style={{ flex: 1, fontWeight: 500, textDecoration: st.status === "done" ? "line-through" : "none", color: st.status === "done" ? "var(--text-tertiary)" : "var(--text-primary)" }}>
                         {st.title}
                       </span>
                       <span className="badge" style={{ ...PRIORITY_STYLES[st.priority], fontSize: 10 }}>{st.priority}</span>
@@ -175,9 +197,7 @@ export default function TaskDetailSheet({ task, tasks, projects, onUpdate, onDel
                 </div>
               )}
               {subtasks.length === 0 && (
-                <div style={{ fontSize: 13, color: "var(--text-tertiary)", padding: "8px 0" }}>
-                  No sub-tasks yet. Click + Add to create one.
-                </div>
+                <div style={{ fontSize: 13, color: "var(--text-tertiary)", padding: "8px 0" }}>No sub-tasks yet. Click + Add to create one.</div>
               )}
             </div>
           )}
@@ -185,9 +205,7 @@ export default function TaskDetailSheet({ task, tasks, projects, onUpdate, onDel
           {/* Dependencies */}
           {!isProject && (
             <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "block" }}>
-                Blocked By ({deps.length})
-              </label>
+              <SectionLabel>Blocked By ({deps.length})</SectionLabel>
               {deps.length > 0 && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
                   {deps.map((depId) => {
