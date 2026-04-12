@@ -10,11 +10,41 @@ import ProjectHub from "@/components/projects/ProjectHub";
 import SettingsPage from "@/components/SettingsPage";
 import GeminiWidget from "@/components/GeminiWidget";
 import CommandPalette from "@/components/CommandPalette";
+import DashboardModule from "@/components/modules/DashboardModule";
+import LifeModule from "@/components/modules/LifeModule";
+import TimeModule from "@/components/modules/TimeModule";
+import PlanningModule from "@/components/modules/PlanningModule";
 
+// All available icons for sidebar modules
 const ICONS = {
+  dashboard: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+    </svg>
+  ),
   clipboard: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="9" y="2" width="6" height="4" rx="1"/><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/>
+    </svg>
+  ),
+  life: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="M12 6v6l4 2"/>
+    </svg>
+  ),
+  clock: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+    </svg>
+  ),
+  planning: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/>
+    </svg>
+  ),
+  search: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
     </svg>
   ),
   settings: (
@@ -24,15 +54,20 @@ const ICONS = {
   ),
 };
 
+// Map module IDs to their page components
 const PAGE_COMPONENTS = {
+  dashboard: DashboardModule,
   projects: ProjectHub,
+  life: LifeModule,
+  time: TimeModule,
+  planning: PlanningModule,
   settings: SettingsPage,
 };
 
 export default function AppShell() {
   const { user, logout, googleAccessToken } = useAuth();
   const { theme, setTheme, preference } = useTheme();
-  const [activePage, setActivePage] = useState("projects");
+  const [activePage, setActivePage] = useState("dashboard");
   const [settings, setSettings] = useState(null);
   const [allItems, setAllItems] = useState([]);
   const [commandOpen, setCommandOpen] = useState(false);
@@ -79,9 +114,15 @@ export default function AppShell() {
   };
 
   const handleCommandNavigate = (viewId) => {
-    setActivePage("projects");
-    // Use a custom event to tell ProjectHub which view to switch to
-    window.dispatchEvent(new CustomEvent("navigate-view", { detail: viewId }));
+    // Check if it's a module-level nav or a project sub-view
+    const moduleIds = ["dashboard", "projects", "life", "time", "planning", "settings"];
+    if (moduleIds.includes(viewId)) {
+      setActivePage(viewId);
+    } else {
+      // It's a project sub-view (board, table, timeline, calendar)
+      setActivePage("projects");
+      window.dispatchEvent(new CustomEvent("navigate-view", { detail: viewId }));
+    }
   };
 
   const modules = getActiveModules(settings);
@@ -92,10 +133,18 @@ export default function AppShell() {
   };
   const themeIcon = preference === "dark" ? "🌙" : preference === "light" ? "☀️" : "🖥";
 
+  const handleModuleClick = (mod) => {
+    if (mod.id === "search") {
+      setCommandOpen(true);
+      return;
+    }
+    setActivePage(mod.id);
+  };
+
   const renderPage = () => {
     const Component = PAGE_COMPONENTS[activePage];
     if (Component) return <Component />;
-    return <ProjectHub />;
+    return <DashboardModule />;
   };
 
   return (
@@ -107,25 +156,18 @@ export default function AppShell() {
           {modules.map((mod) => (
             <button
               key={mod.id}
-              className={`nav-item ${activePage === mod.id ? "active" : ""}`}
-              onClick={() => setActivePage(mod.id)}
+              className={`nav-item ${activePage === mod.id ? "active" : ""} ${mod.id === "search" && commandOpen ? "active" : ""}`}
+              onClick={() => handleModuleClick(mod)}
             >
               {ICONS[mod.icon] || ICONS.clipboard}
               {mod.label}
+              {mod.id === "search" && (
+                <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--text-tertiary)", background: "var(--bg-secondary)", padding: "1px 5px", borderRadius: 4 }}>⌘K</span>
+              )}
             </button>
           ))}
-
-          {/* CMD+K shortcut button */}
-          <button className="nav-item" onClick={() => setCommandOpen(true)} style={{ marginTop: 8, opacity: 0.7 }}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            Search
-            <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--text-tertiary)", background: "var(--bg-secondary)", padding: "1px 5px", borderRadius: 4 }}>⌘K</span>
-          </button>
         </nav>
         <div className="sidebar-footer">
-          {/* Theme toggle */}
           <button className="nav-item" onClick={cycleTheme} title={`Theme: ${preference}`}>
             <span style={{ fontSize: 16, width: 20, textAlign: "center" }}>{themeIcon}</span>
             {preference === "system" ? "System" : preference === "dark" ? "Dark" : "Light"}
@@ -172,7 +214,7 @@ export default function AppShell() {
               <button
                 key={mod.id}
                 className={`nav-item ${activePage === mod.id ? "active" : ""}`}
-                onClick={() => { setActivePage(mod.id); setMobileMenuOpen(false); }}
+                onClick={() => { handleModuleClick(mod); setMobileMenuOpen(false); }}
                 style={{ justifyContent: "flex-start", width: "100%", textAlign: "left", padding: "10px 12px" }}
               >
                 {ICONS[mod.icon] || ICONS.clipboard}
@@ -180,7 +222,7 @@ export default function AppShell() {
               </button>
             ))}
             <div style={{ flex: 1 }} />
-            <button className="nav-item" onClick={() => { cycleTheme(); }} style={{ padding: "10px 12px" }}>
+            <button className="nav-item" onClick={cycleTheme} style={{ padding: "10px 12px" }}>
               <span style={{ fontSize: 16 }}>{themeIcon}</span> Theme: {preference}
             </button>
             <button className="nav-item" onClick={logout} style={{ padding: "10px 12px" }}>
@@ -196,14 +238,14 @@ export default function AppShell() {
         {renderPage()}
       </main>
 
-      {/* Mobile Bottom Tabs */}
+      {/* Mobile Bottom Tabs — show first 5 modules */}
       <nav className="mobile-tabs">
         <div className="mobile-tabs-inner">
-          {modules.map((mod) => (
+          {modules.filter(m => m.id !== "search" && m.id !== "settings").slice(0, 5).map((mod) => (
             <button
               key={mod.id}
               className={`tab-item ${activePage === mod.id ? "active" : ""}`}
-              onClick={() => setActivePage(mod.id)}
+              onClick={() => handleModuleClick(mod)}
             >
               {ICONS[mod.icon] || ICONS.clipboard}
               <span>{mod.label}</span>

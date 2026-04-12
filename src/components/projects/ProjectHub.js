@@ -2,39 +2,27 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/AuthContext";
-import { getItems, createItem, updateItem, deleteItem, getProjects, getActiveItems, getPlanningItems, upsertItemByGoogleId } from "@/lib/projects";
+import { getItems, createItem, updateItem, deleteItem, getProjects, getActiveItems, upsertItemByGoogleId } from "@/lib/projects";
 import { syncItemToGoogle, unsyncItemFromGoogle, pullFromGoogle } from "@/lib/googleSync";
 import { getSettings, saveSettings, getActiveViews } from "@/lib/settings";
 import { evaluateRules, evaluateTimeRules } from "@/lib/automations";
 import { getHabits } from "@/lib/habits";
 import KanbanBoard from "./KanbanBoard";
 import TableView from "./TableView";
-import TodayView from "./TodayView";
 import GanttTimeline from "./GanttTimeline";
 import CalendarView from "./CalendarView";
-import HabitTracker from "./HabitTracker";
-import GoalsView from "./GoalsView";
-import WeeklyReview from "./WeeklyReview";
-import PlanningView from "./PlanningView";
 import TaskDetailSheet from "./TaskDetailSheet";
 import CreateItemModal from "./CreateItemModal";
 import SettingsPanel from "./SettingsPanel";
-import TimeDashboard from "./TimeDashboard";
 
-const VIEW_COMPONENTS = {
-  today: "Today",
-  board: "Board",
-  table: "Table",
-  timeline: "Timeline",
-  calendar: "Calendar",
-  planning: "Planning",
-};
+// ProjectHub now only contains task management views
+// Habits, Goals, Journal, Time, Planning are in their own modules
 
 export default function ProjectHub() {
   const { user, googleAccessToken } = useAuth();
   const [items, setItems] = useState([]);
   const [settings, setSettings] = useState(null);
-  const [activeViewId, setActiveViewId] = useState("today");
+  const [activeViewId, setActiveViewId] = useState("board");
   const [selectedItem, setSelectedItem] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -256,15 +244,12 @@ export default function ProjectHub() {
     setActiveViewId("board");
   };
 
-  const activeViews = getActiveViews(settings);
+  // Only show project-relevant views (others moved to their own modules)
+  const PROJECT_VIEW_IDS = new Set(["board", "table", "timeline", "calendar"]);
+  const activeViews = getActiveViews(settings).filter(v => PROJECT_VIEW_IDS.has(v.id));
   const moduleName = settings?.moduleName || "Projects";
 
-  const viewItems = activeViewId === "planning" ? getPlanningItems(items)
-    : activeViewId === "today" ? items
-    : activeViewId === "habits" ? items
-    : activeViewId === "goals" ? items
-    : activeViewId === "review" ? items
-    : getActiveItems(items);
+  const viewItems = getActiveItems(items);
 
   // Time logging handler
   const handleLogTime = async (entry) => {
@@ -342,16 +327,10 @@ export default function ProjectHub() {
           <SettingsPanel settings={settings} onSave={handleSaveSettings} onClose={() => setShowSettings(false)} />
         )}
 
-        {activeViewId === "today" && <TodayView items={viewItems} projects={projects} habits={habits} onUpdate={handleUpdate} onSelect={setSelectedItem} />}
         {activeViewId === "board" && <KanbanBoard items={viewItems} allItems={items} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} onAddSubtask={handleAddSubtaskToProject} isBlocked={isBlocked} onLogTime={handleLogTime} />}
         {activeViewId === "table" && <TableView items={viewItems} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} isBlocked={isBlocked} />}
         {activeViewId === "timeline" && <GanttTimeline tasks={viewItems} projects={projects} onUpdateTask={handleUpdate} onSelectTask={setSelectedItem} />}
         {activeViewId === "calendar" && <CalendarView tasks={viewItems} projects={projects} habits={habits} onSelectTask={setSelectedItem} onNavigate={setActiveViewId} onUpdate={handleUpdate} googleAccessToken={googleAccessToken} />}
-        {activeViewId === "planning" && <PlanningView items={viewItems} onUpdate={handleUpdate} onSelect={setSelectedItem} onImplementPlan={handleImplementPlan} />}
-        {activeViewId === "habits" && <HabitTracker />}
-        {activeViewId === "goals" && <GoalsView items={items} />}
-        {activeViewId === "review" && <WeeklyReview items={items} habits={habits} onCreateJournal={handleCreate} />}
-        {activeViewId === "time" && <TimeDashboard timeEntries={timeEntries} items={items} projects={projects} />}
 
         {selectedItem && (
           <TaskDetailSheet
