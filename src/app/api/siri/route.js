@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebaseAdmin";
+import { getAdminDb } from "@/lib/firebaseAdmin";
 
 // Siri Shortcuts API
 // URL: /api/siri?action=add&type=task&title=Buy%20groceries&token=USER_UID
-// This is intentionally simple — uses UID as token for personal use
 
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
   const action = searchParams.get("action");
-  const token = searchParams.get("token"); // User UID
+  const token = searchParams.get("token");
   const type = searchParams.get("type") || "task";
   const title = searchParams.get("title");
   const dueDate = searchParams.get("due") || null;
@@ -16,6 +15,11 @@ export async function GET(req) {
 
   if (!token) {
     return NextResponse.json({ error: "Missing token (user UID)" }, { status: 401 });
+  }
+
+  const adminDb = getAdminDb();
+  if (!adminDb) {
+    return NextResponse.json({ error: "Server not configured — set FIREBASE_SERVICE_ACCOUNT_KEY" }, { status: 503 });
   }
 
   if (action === "add") {
@@ -26,32 +30,14 @@ export async function GET(req) {
     const now = new Date().toISOString();
     const item = {
       type: ["task", "event", "project"].includes(type) ? type : "task",
-      title,
-      description: "",
-      status: "todo",
-      priority,
-      parentId: null,
-      startDate: null,
-      dueDate,
-      timeBlock: null,
-      allDay: false,
-      location: "",
-      notes: "",
-      reminders: [],
-      recurrence: null,
-      attendees: [],
-      conferenceLink: null,
-      calendarId: "primary",
-      dependencies: [],
-      googleCalendarEventId: null,
-      googleTaskId: null,
-      googleTaskListId: null,
-      color: "#2563eb",
-      source: "siri",
-      sourceRef: null,
-      createdAt: now,
-      updatedAt: now,
-      completedAt: null,
+      title, description: "", status: "todo", priority,
+      parentId: null, startDate: null, dueDate,
+      timeBlock: null, allDay: false, location: "", notes: "",
+      reminders: [], recurrence: null, attendees: [],
+      conferenceLink: null, calendarId: "primary", dependencies: [],
+      googleCalendarEventId: null, googleTaskId: null, googleTaskListId: null,
+      color: "#2563eb", source: "siri", sourceRef: null,
+      createdAt: now, updatedAt: now, completedAt: null,
     };
 
     try {
@@ -59,7 +45,6 @@ export async function GET(req) {
       await ref.set(item);
       return NextResponse.json({ success: true, id: ref.id, title, type });
     } catch (err) {
-      console.error("Siri API error:", err);
       return NextResponse.json({ error: "Failed to create item" }, { status: 500 });
     }
   }

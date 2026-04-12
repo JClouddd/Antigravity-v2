@@ -1,21 +1,26 @@
 import { initializeApp, getApps, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
-function initAdmin() {
-  if (getApps().length > 0) return getApps()[0];
+let _db = null;
 
-  // In production (Vercel), use FIREBASE_SERVICE_ACCOUNT_KEY env var
+function getAdminDb() {
+  if (_db) return _db;
+
   const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_KEY
     ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY)
     : null;
 
-  if (serviceAccount) {
-    return initializeApp({ credential: cert(serviceAccount) });
+  if (!serviceAccount) {
+    console.warn("[firebaseAdmin] No FIREBASE_SERVICE_ACCOUNT_KEY — Siri API will not work");
+    return null;
   }
 
-  // Fallback: try default credentials (for local dev with gcloud auth)
-  return initializeApp();
+  if (getApps().length === 0) {
+    initializeApp({ credential: cert(serviceAccount) });
+  }
+
+  _db = getFirestore();
+  return _db;
 }
 
-const app = initAdmin();
-export const adminDb = getFirestore(app);
+export { getAdminDb };
