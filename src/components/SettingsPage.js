@@ -163,10 +163,16 @@ export default function SettingsPage() {
               <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "block" }}>
                 Gemini API Key
               </label>
-              <input type="password" value={geminiKey} onChange={(e) => setGeminiKey(e.target.value)}
-                placeholder="Enter your Gemini API key..." style={{ fontSize: 13 }} />
+              <div style={{ display: "flex", gap: 8 }}>
+                <input type="password" value={geminiKey} onChange={(e) => setGeminiKey(e.target.value)}
+                  placeholder="Enter your Gemini API key..." style={{ fontSize: 13, flex: 1 }} />
+                <button className="btn btn-sm btn-primary" onClick={handleSave} style={{ whiteSpace: "nowrap" }}>
+                  {saved ? "✓ Saved" : "Save Key"}
+                </button>
+              </div>
               <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4 }}>
                 Powers the AI assistant widget. Get a key from <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style={{ color: "var(--accent)" }}>AI Studio</a>.
+                {geminiKey && <span style={{ color: "#059669", marginLeft: 8 }}>✓ Key configured</span>}
               </div>
             </div>
           </div>

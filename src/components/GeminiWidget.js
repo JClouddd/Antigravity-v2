@@ -16,8 +16,9 @@ export default function GeminiWidget({ settings, items, onCreateItem, onUpdateIt
   const [locked, setLocked] = useState(() => {
     try { return localStorage.getItem("gemini_locked") === "true"; } catch { return false; }
   });
-  const [dragging, setDragging] = useState(false);
-  const dragRef = useRef(null);
+  const draggingRef = useRef(false);
+  const didDragRef = useRef(false); // Track if mouse actually moved (not just click)
+  const startPosRef = useRef({ x: 0, y: 0 });
   const offsetRef = useRef({ x: 0, y: 0 });
   const scrollRef = useRef(null);
 
@@ -32,49 +33,48 @@ export default function GeminiWidget({ settings, items, onCreateItem, onUpdateIt
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
 
-  // Drag handlers
-  const handleMouseDown = useCallback((e) => {
+  // Drag handlers — use refs instead of state to avoid the click race condition
+  const handlePointerDown = useCallback((e) => {
     if (locked || open) return;
-    setDragging(true);
+    e.preventDefault();
+    draggingRef.current = true;
+    didDragRef.current = false;
+    startPosRef.current = { x: e.clientX, y: e.clientY };
     offsetRef.current = { x: e.clientX - (pos?.x || 0), y: e.clientY - (pos?.y || 0) };
-  }, [locked, open, pos]);
 
-  const handleTouchStart = useCallback((e) => {
-    if (locked || open) return;
-    const t = e.touches[0];
-    setDragging(true);
-    offsetRef.current = { x: t.clientX - (pos?.x || 0), y: t.clientY - (pos?.y || 0) };
-  }, [locked, open, pos]);
-
-  useEffect(() => {
-    if (!dragging) return;
-    const handleMove = (e) => {
-      const clientX = e.clientX ?? e.touches?.[0]?.clientX;
-      const clientY = e.clientY ?? e.touches?.[0]?.clientY;
-      if (clientX == null) return;
+    const handleMove = (ev) => {
+      if (!draggingRef.current) return;
+      const dx = Math.abs(ev.clientX - startPosRef.current.x);
+      const dy = Math.abs(ev.clientY - startPosRef.current.y);
+      if (dx > 3 || dy > 3) didDragRef.current = true; // Only count as drag if moved > 3px
       const newPos = {
-        x: Math.max(0, Math.min(window.innerWidth - 48, clientX - offsetRef.current.x)),
-        y: Math.max(0, Math.min(window.innerHeight - 48, clientY - offsetRef.current.y)),
+        x: Math.max(0, Math.min(window.innerWidth - 48, ev.clientX - offsetRef.current.x)),
+        y: Math.max(0, Math.min(window.innerHeight - 48, ev.clientY - offsetRef.current.y)),
       };
       setPos(newPos);
     };
-    const handleUp = () => {
-      setDragging(false);
-      if (pos) localStorage.setItem("gemini_pos", JSON.stringify(pos));
-    };
-    window.addEventListener("mousemove", handleMove);
-    window.addEventListener("mouseup", handleUp);
-    window.addEventListener("touchmove", handleMove, { passive: false });
-    window.addEventListener("touchend", handleUp);
-    return () => {
-      window.removeEventListener("mousemove", handleMove);
-      window.removeEventListener("mouseup", handleUp);
-      window.removeEventListener("touchmove", handleMove);
-      window.removeEventListener("touchend", handleUp);
-    };
-  }, [dragging, pos]);
 
-  const toggleLock = () => {
+    const handleUp = () => {
+      draggingRef.current = false;
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+      // Save position
+      setPos(prev => {
+        if (prev) localStorage.setItem("gemini_pos", JSON.stringify(prev));
+        return prev;
+      });
+      // If it was NOT a drag (just a click), open the chat
+      setTimeout(() => {
+        if (!didDragRef.current) setOpen(true);
+      }, 10);
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+  }, [locked, open, pos]);
+
+  const toggleLock = (e) => {
+    e.stopPropagation();
     const next = !locked;
     setLocked(next);
     localStorage.setItem("gemini_locked", String(next));
@@ -138,7 +138,7 @@ export default function GeminiWidget({ settings, items, onCreateItem, onUpdateIt
       return `Couldn't find an active item matching "${search}"`;
     }
 
-    return null; // Not a known slash command, send to AI
+    return null;
   };
 
   const handleSend = async () => {
@@ -147,7 +147,6 @@ export default function GeminiWidget({ settings, items, onCreateItem, onUpdateIt
     setMessages(prev => [...prev, { role: "user", text: userMsg }]);
     setInput("");
 
-    // Handle slash commands locally
     if (userMsg.startsWith("/")) {
       setLoading(true);
       const result = await handleSlashCommand(userMsg);
@@ -170,7 +169,6 @@ export default function GeminiWidget({ settings, items, onCreateItem, onUpdateIt
         role: m.role === "ai" ? "model" : "user",
         parts: [{ text: m.text }],
       }));
-
       conversation.push({ role: "user", parts: [{ text: userMsg }] });
 
       const systemPrompt = `You are Antigravity AI — a concise, helpful assistant embedded in the Antigravity Hub project management system. Keep replies short and actionable. Use markdown when helpful.
@@ -214,21 +212,17 @@ AVAILABLE COMMANDS (tell the user about these if relevant):
   if (!open) {
     return (
       <div
-        ref={dragRef}
-        onMouseDown={handleMouseDown}
-        onTouchStart={handleTouchStart}
+        onPointerDown={handlePointerDown}
         onDoubleClick={toggleLock}
-        onClick={() => { if (!dragging) setOpen(true); }}
         style={{
           position: "fixed",
           left: bx, top: by,
           zIndex: 9999, width: 48, height: 48, borderRadius: "50%",
           background: "linear-gradient(135deg, #4285f4, #7c3aed)",
           border: locked ? "2px solid rgba(255,255,255,0.4)" : "none",
-          cursor: dragging ? "grabbing" : locked ? "pointer" : "grab",
+          cursor: locked ? "pointer" : "grab",
           boxShadow: "0 4px 16px rgba(66,133,244,0.4)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          transition: dragging ? "none" : "box-shadow 0.2s",
           userSelect: "none", touchAction: "none",
         }}
       >
