@@ -95,58 +95,53 @@ export async function getGoogleTasks(accessToken, taskListId = "@default") {
   return data.items || [];
 }
 
-// Push a Hub item to Google (create or update)
+// ===== UNIFIED SYNC ENGINE =====
+// ALL items → Google Calendar (one unified calendar for widgets)
+// Tasks/Subtasks → ALSO Google Tasks (for Tasks widget)
+
+const TYPE_PREFIX = { project: "📁", task: "✅", subtask: "↳", event: "" };
+
 export async function syncItemToGoogle(accessToken, item, updateItemCallback) {
   if (!accessToken) { console.warn("[SYNC] No access token — skipping"); return; }
 
   try {
-    if (item.type === "event") {
-      // Events → Google Calendar
-      if (item.googleCalendarEventId) {
-        console.log(`[SYNC] Updating calendar event: ${item.title}`);
-        await updateCalendarEvent(accessToken, item.googleCalendarEventId, item);
-      } else {
-        console.log(`[SYNC] Creating calendar event: ${item.title}`);
-        const created = await createCalendarEvent(accessToken, item);
-        console.log(`[SYNC] Created calendar event ID: ${created.id}`);
-        await updateItemCallback({ googleCalendarEventId: created.id });
-      }
-    } else if (item.type === "task" || item.type === "subtask") {
-      // Tasks → Google Tasks
+    const updates = {};
+    const prefix = TYPE_PREFIX[item.type] || "";
+    const calTitle = prefix ? `${prefix} ${item.title}` : item.title;
+
+    // ── Step 1: ALL items → Google Calendar ──
+    const calItem = { ...item, title: calTitle };
+    if (item.googleCalendarEventId) {
+      console.log(`[SYNC] Updating calendar: ${calTitle}`);
+      await updateCalendarEvent(accessToken, item.googleCalendarEventId, calItem);
+    } else {
+      console.log(`[SYNC] Creating calendar: ${calTitle}`);
+      const created = await createCalendarEvent(accessToken, calItem);
+      console.log(`[SYNC] → Calendar ID: ${created.id}`);
+      updates.googleCalendarEventId = created.id;
+    }
+
+    // ── Step 2: Tasks/Subtasks → ALSO Google Tasks ──
+    if (item.type === "task" || item.type === "subtask") {
       if (item.googleTaskId) {
-        console.log(`[SYNC] Updating Google Task: ${item.title}`);
+        console.log(`[SYNC] Updating task: ${item.title}`);
         await updateGoogleTask(accessToken, item.googleTaskId, item);
       } else {
-        console.log(`[SYNC] Creating Google Task: ${item.title}`);
+        console.log(`[SYNC] Creating task: ${item.title}`);
         const created = await createGoogleTask(accessToken, item);
-        console.log(`[SYNC] Created task ID: ${created.id}`);
-        const updates = { googleTaskId: created.id };
+        console.log(`[SYNC] → Task ID: ${created.id}`);
+        updates.googleTaskId = created.id;
+      }
+    }
 
-        // Also create a Calendar event for tasks WITH dates (so they show in Calendar widget)
-        if (item.startDate || item.dueDate || item.timeBlock?.date) {
-          try {
-            const calEvent = await createCalendarEvent(accessToken, { ...item, summary: `✅ ${item.title}` });
-            updates.googleCalendarEventId = calEvent.id;
-            console.log(`[SYNC] Also created calendar entry for task: ${calEvent.id}`);
-          } catch (calErr) {
-            console.warn(`[SYNC] Calendar mirror for task failed (non-critical):`, calErr.message);
-          }
-        }
-        await updateItemCallback(updates);
-      }
-      // Update calendar mirror if it exists
-      if (item.googleCalendarEventId) {
-        try {
-          await updateCalendarEvent(accessToken, item.googleCalendarEventId, { ...item, title: `✅ ${item.title}` });
-        } catch { /* non-critical */ }
-      }
-    } else if (item.type === "project") {
-      console.log(`[SYNC] Skipping project: ${item.title}`);
+    // Save Google IDs back to Firestore
+    if (Object.keys(updates).length > 0) {
+      await updateItemCallback(updates);
     }
   } catch (err) {
     console.error(`[SYNC] Error syncing "${item.title}":`, err.message);
     if (err.message.includes("401") || err.message.includes("403")) {
-      console.error("[SYNC] Token expired or missing scopes. User needs to reconnect Google.");
+      console.error("[SYNC] Token expired or missing scopes. Reconnect Google in Settings.");
     }
   }
 }
