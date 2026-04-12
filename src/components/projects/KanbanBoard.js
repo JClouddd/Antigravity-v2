@@ -8,9 +8,9 @@ const COLUMNS = [
   { key: "done", label: "Done" },
 ];
 
-const TYPE_ICONS = { project: "📁", task: "✅", subtask: "↳", event: "📅" };
-const TYPE_TAG = { project: "PRJ", task: "TSK", subtask: "SUB", event: "EVT" };
-const TYPE_TAG_COLOR = { project: "#7c3aed", task: "#2563eb", subtask: "#6b7280", event: "#059669" };
+const TYPE_ICONS = { project: "📁", task: "✅", subtask: "↳", event: "📅", plan: "📋", goal: "🎯", habit: "🔄", journal: "📓" };
+const TYPE_TAG = { project: "PRJ", task: "TSK", subtask: "SUB", event: "EVT", plan: "PLN", goal: "GOL", habit: "HBT", journal: "JRN" };
+const TYPE_TAG_COLOR = { project: "#7c3aed", task: "#2563eb", subtask: "#6b7280", event: "#059669", plan: "#d97706", goal: "#dc2626", habit: "#059669", journal: "#8b5cf6" };
 const PRIORITY_DOT = { urgent: "#dc2626", high: "#d97706", medium: "#2563eb", low: "#94a3b8" };
 
 export default function KanbanBoard({ items, allItems, projects, onUpdate, onSelect, onAddSubtask }) {
