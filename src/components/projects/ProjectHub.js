@@ -2,34 +2,30 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/AuthContext";
-import { getProjects, createProject, getTasks, createTask, updateTask, deleteTask } from "@/lib/projects";
+import { getItems, createItem, updateItem, deleteItem, getProjects, getActiveItems, getPlanningItems } from "@/lib/projects";
 import KanbanBoard from "./KanbanBoard";
+import TableView from "./TableView";
 import GanttTimeline from "./GanttTimeline";
 import CalendarView from "./CalendarView";
 import TaskDetailSheet from "./TaskDetailSheet";
+import CreateItemModal from "./CreateItemModal";
 
-const VIEWS = ["Board", "Timeline", "Calendar"];
+const VIEWS = ["Board", "Table", "Timeline", "Calendar", "Planning"];
 
 export default function ProjectHub() {
   const { user, googleAccessToken } = useAuth();
-  const [projects, setProjects] = useState([]);
-  const [tasks, setTasks] = useState([]);
+  const [items, setItems] = useState([]);
   const [activeView, setActiveView] = useState("Board");
-  const [activeProject, setActiveProject] = useState(null); // null = all
-  const [selectedTask, setSelectedTask] = useState(null);
+  const [activeProject, setActiveProject] = useState(null);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [newProjectTitle, setNewProjectTitle] = useState("");
-  const [showNewProject, setShowNewProject] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!user) return;
     try {
-      const [p, t] = await Promise.all([
-        getProjects(user.uid),
-        getTasks(user.uid),
-      ]);
-      setProjects(p);
-      setTasks(t);
+      const data = await getItems(user.uid);
+      setItems(data);
     } catch (e) {
       console.error("Load error:", e);
     } finally {
@@ -37,101 +33,85 @@ export default function ProjectHub() {
     }
   }, [user]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useEffect(() => { loadData(); }, [loadData]);
 
-  const handleCreateProject = async () => {
-    if (!newProjectTitle.trim()) return;
-    const p = await createProject(user.uid, { title: newProjectTitle.trim() });
-    if (p) {
-      setProjects((prev) => [p, ...prev]);
-      setNewProjectTitle("");
-      setShowNewProject(false);
+  const handleCreate = async (data) => {
+    const item = await createItem(user.uid, data);
+    if (item) {
+      setItems((prev) => [item, ...prev]);
+      setShowCreate(false);
     }
   };
 
-  const handleCreateTask = async (data) => {
-    const task = await createTask(user.uid, {
-      ...data,
-      projectId: activeProject,
-    });
-    if (task) {
-      setTasks((prev) => [...prev, task]);
-    }
+  const handleUpdate = async (itemId, updates) => {
+    await updateItem(user.uid, itemId, updates);
+    setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, ...updates } : i)));
+    if (selectedItem?.id === itemId) setSelectedItem((prev) => ({ ...prev, ...updates }));
   };
 
-  const handleUpdateTask = async (taskId, updates) => {
-    await updateTask(user.uid, taskId, updates);
-    setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, ...updates } : t))
+  const handleDelete = async (itemId) => {
+    await deleteItem(user.uid, itemId);
+    setItems((prev) => prev.filter((i) => i.id !== itemId));
+    if (selectedItem?.id === itemId) setSelectedItem(null);
+  };
+
+  const projects = getProjects(items);
+  const activeItems = activeView === "Planning" ? getPlanningItems(items) : getActiveItems(items);
+
+  const filteredItems = activeProject
+    ? activeItems.filter((i) => i.id === activeProject || i.parentId === activeProject)
+    : activeItems;
+
+  if (loading) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", width: "100%" }}>
+        <div className="spinner" style={{ height: 40 }} />
+      </div>
     );
-    if (selectedTask?.id === taskId) {
-      setSelectedTask((prev) => ({ ...prev, ...updates }));
-    }
-  };
-
-  const handleDeleteTask = async (taskId) => {
-    await deleteTask(user.uid, taskId);
-    setTasks((prev) => prev.filter((t) => t.id !== taskId));
-    if (selectedTask?.id === taskId) setSelectedTask(null);
-  };
-
-  const filteredTasks = activeProject
-    ? tasks.filter((t) => t.projectId === activeProject)
-    : tasks;
-
-  if (loading) return <div className="spinner" />;
+  }
 
   return (
     <>
       <div className="page-header">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
           <div>
-            <h1>Projects</h1>
-            <p>Manage tasks, timelines, and schedules.</p>
+            <h1>{activeView === "Planning" ? "Planning" : "Projects"}</h1>
+            <p>{activeView === "Planning" ? "Items under consideration — not yet committed." : "Manage projects, tasks, and events."}</p>
           </div>
-          <button className="btn btn-primary" onClick={() => setShowNewProject(true)}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            New Project
+          <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Item
           </button>
         </div>
 
-        {/* Project Filter Chips */}
-        <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
-          <button
-            className={`btn btn-sm ${!activeProject ? "btn-primary" : ""}`}
-            onClick={() => setActiveProject(null)}
-          >
-            All
-          </button>
-          {projects.map((p) => (
-            <button
-              key={p.id}
-              className={`btn btn-sm ${activeProject === p.id ? "btn-primary" : ""}`}
-              onClick={() => setActiveProject(p.id)}
-              style={activeProject !== p.id ? { borderLeft: `3px solid ${p.color}` } : {}}
-            >
-              {p.title}
-            </button>
-          ))}
-        </div>
+        {/* Project Filter Chips — hide on Planning view */}
+        {activeView !== "Planning" && projects.length > 0 && (
+          <div style={{ display: "flex", gap: 6, marginTop: 14, flexWrap: "wrap" }}>
+            <button className={`btn btn-sm ${!activeProject ? "btn-primary" : ""}`} onClick={() => setActiveProject(null)}>All</button>
+            {projects.map((p) => (
+              <button
+                key={p.id}
+                className={`btn btn-sm ${activeProject === p.id ? "btn-primary" : ""}`}
+                onClick={() => setActiveProject(p.id)}
+                style={activeProject !== p.id ? { borderLeft: `3px solid ${p.color}` } : {}}
+              >
+                {p.title}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* View Tabs */}
-        <div style={{ display: "flex", gap: 4, marginTop: 12, borderBottom: "1px solid var(--border)", paddingBottom: 0 }}>
+        <div style={{ display: "flex", gap: 0, marginTop: 12, borderBottom: "1px solid var(--border)" }}>
           {VIEWS.map((v) => (
             <button
               key={v}
               onClick={() => setActiveView(v)}
               style={{
-                padding: "8px 16px",
-                fontSize: 13,
-                fontWeight: 500,
-                border: "none",
-                background: "none",
+                padding: "8px 14px", fontSize: 13, fontWeight: 500,
+                border: "none", background: "none", cursor: "pointer",
                 color: activeView === v ? "var(--accent)" : "var(--text-secondary)",
                 borderBottom: activeView === v ? "2px solid var(--accent)" : "2px solid transparent",
-                cursor: "pointer",
                 transition: "all 0.15s",
               }}
             >
@@ -142,66 +122,38 @@ export default function ProjectHub() {
       </div>
 
       <div className="page-body" style={{ position: "relative" }}>
-        {/* New Project Modal */}
-        {showNewProject && (
-          <div style={{
-            position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex",
-            alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20,
-          }} onClick={() => setShowNewProject(false)}>
-            <div className="card" style={{ width: "100%", maxWidth: 400 }} onClick={(e) => e.stopPropagation()}>
-              <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>New Project</h3>
-              <input
-                type="text"
-                placeholder="Project name..."
-                value={newProjectTitle}
-                onChange={(e) => setNewProjectTitle(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleCreateProject()}
-                autoFocus
-              />
-              <div style={{ display: "flex", gap: 8, marginTop: 12, justifyContent: "flex-end" }}>
-                <button className="btn btn-sm" onClick={() => setShowNewProject(false)}>Cancel</button>
-                <button className="btn btn-sm btn-primary" onClick={handleCreateProject}>Create</button>
-              </div>
-            </div>
-          </div>
+        {showCreate && (
+          <CreateItemModal
+            projects={projects}
+            activeProject={activeProject}
+            defaultStatus={activeView === "Planning" ? "planning" : "todo"}
+            onCreate={handleCreate}
+            onClose={() => setShowCreate(false)}
+          />
         )}
 
-        {/* Views */}
         {activeView === "Board" && (
-          <KanbanBoard
-            tasks={filteredTasks}
-            projects={projects}
-            onCreateTask={handleCreateTask}
-            onUpdateTask={handleUpdateTask}
-            onSelectTask={setSelectedTask}
-          />
+          <KanbanBoard items={filteredItems} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} />
+        )}
+        {activeView === "Table" && (
+          <TableView items={filteredItems} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} />
         )}
         {activeView === "Timeline" && (
-          <GanttTimeline
-            tasks={filteredTasks}
-            projects={projects}
-            onUpdateTask={handleUpdateTask}
-            onSelectTask={setSelectedTask}
-          />
+          <GanttTimeline tasks={filteredItems} projects={projects} onUpdateTask={handleUpdate} onSelectTask={setSelectedItem} />
         )}
         {activeView === "Calendar" && (
-          <CalendarView
-            tasks={filteredTasks}
-            projects={projects}
-            onSelectTask={setSelectedTask}
-            googleAccessToken={googleAccessToken}
-          />
+          <CalendarView tasks={filteredItems} projects={projects} onSelectTask={setSelectedItem} googleAccessToken={googleAccessToken} />
+        )}
+        {activeView === "Planning" && (
+          <TableView items={filteredItems} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} />
         )}
 
-        {/* Task Detail */}
-        {selectedTask && (
+        {selectedItem && (
           <TaskDetailSheet
-            task={selectedTask}
-            tasks={tasks}
-            projects={projects}
-            onUpdate={(updates) => handleUpdateTask(selectedTask.id, updates)}
-            onDelete={() => handleDeleteTask(selectedTask.id)}
-            onClose={() => setSelectedTask(null)}
+            task={selectedItem} tasks={items} projects={projects}
+            onUpdate={(updates) => handleUpdate(selectedItem.id, updates)}
+            onDelete={() => handleDelete(selectedItem.id)}
+            onClose={() => setSelectedItem(null)}
           />
         )}
       </div>
