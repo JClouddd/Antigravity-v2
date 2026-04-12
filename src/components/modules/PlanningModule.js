@@ -5,11 +5,11 @@ import { useAuth } from "@/lib/AuthContext";
 import { getItems, createItem, updateItem } from "@/lib/projects";
 import PlanningView from "@/components/projects/PlanningView";
 
-const PLAN_STATUS_COLORS = {
-  draft: { bg: "var(--bg-secondary)", color: "var(--text-secondary)" },
-  approved: { bg: "var(--accent-light)", color: "var(--accent)" },
+const STATUS_COLORS = {
+  todo: { bg: "var(--bg-secondary)", color: "var(--text-secondary)" },
+  planning: { bg: "var(--bg-secondary)", color: "var(--text-secondary)" },
   in_progress: { bg: "var(--warning-light)", color: "var(--warning)" },
-  completed: { bg: "var(--success-light)", color: "var(--success)" },
+  done: { bg: "var(--success-light)", color: "var(--success)" },
 };
 
 const TABS = [
@@ -19,31 +19,39 @@ const TABS = [
 
 export default function PlanningModule() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState("blueprints");
+  const [activeTab, setActiveTab] = useState("ai_plans");
   const [items, setItems] = useState([]);
-  const [aiPlans, setAiPlans] = useState([]);
 
   const loadData = useCallback(async () => {
     if (!user) return;
     const data = await getItems(user.uid);
     setItems(data);
-    // Load AI implementation plans from localStorage
-    try {
-      const stored = JSON.parse(localStorage.getItem("ai_plans") || "[]");
-      setAiPlans(stored);
-    } catch { setAiPlans([]); }
   }, [user]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // AI Plans = projects created by the AI agent (source === "ai_agent")
+  const aiProjects = items
+    .filter(i => i.source === "ai_agent" && i.type === "project")
+    .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+
+  // Get subtasks for an AI project
+  const getSubtasks = (projectId) =>
+    items.filter(i => i.parentId === projectId).sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
+
+  const getProgress = (projectId) => {
+    const subs = getSubtasks(projectId);
+    if (subs.length === 0) return null;
+    const done = subs.filter(s => s.status === "done").length;
+    return { done, total: subs.length, pct: Math.round((done / subs.length) * 100) };
+  };
+
   const handleImplementPlan = async (plan) => {
     if (!user) return;
-    // Create project from plan
     const project = await createItem(user.uid, {
       type: "project", title: plan.title, description: plan.description,
       status: "planning", priority: plan.priority || "medium",
     });
-    // Create subtasks for each step
     if (plan.steps?.length && project) {
       for (const step of plan.steps) {
         await createItem(user.uid, {
@@ -53,33 +61,6 @@ export default function PlanningModule() {
       }
     }
     loadData();
-  };
-
-  const handleConvertAiPlan = async (plan) => {
-    if (!user) return;
-    const project = await createItem(user.uid, {
-      type: "project", title: plan.title, description: plan.summary || plan.description,
-      status: "planning", priority: "high",
-    });
-    if (plan.tasks?.length && project) {
-      for (const task of plan.tasks) {
-        await createItem(user.uid, {
-          type: "subtask", title: typeof task === "string" ? task : task.title,
-          parentId: project.id, status: "todo", priority: task.priority || "medium",
-        });
-      }
-    }
-    // Mark plan as converted
-    const updated = aiPlans.map(p => p.id === plan.id ? { ...p, status: "in_progress", convertedAt: new Date().toISOString() } : p);
-    localStorage.setItem("ai_plans", JSON.stringify(updated));
-    setAiPlans(updated);
-    loadData();
-  };
-
-  const handleDeleteAiPlan = (planId) => {
-    const updated = aiPlans.filter(p => p.id !== planId);
-    localStorage.setItem("ai_plans", JSON.stringify(updated));
-    setAiPlans(updated);
   };
 
   return (
@@ -111,60 +92,93 @@ export default function PlanningModule() {
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <h3 style={{ fontSize: 14, fontWeight: 600 }}>Implementation Plans from AI Sessions</h3>
-              <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{aiPlans.length} plan{aiPlans.length !== 1 ? "s" : ""}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{aiProjects.length} plan{aiProjects.length !== 1 ? "s" : ""}</span>
+                <button className="btn btn-sm" onClick={loadData} title="Refresh">🔄</button>
+              </div>
             </div>
 
-            {aiPlans.length === 0 && (
+            {aiProjects.length === 0 && (
               <div className="card" style={{ textAlign: "center", padding: 40 }}>
-                <div style={{ fontSize: 32, marginBottom: 8 }}>📐</div>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>🤖</div>
                 <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>No AI Plans Yet</h3>
-                <p style={{ color: "var(--text-secondary)", fontSize: 13, maxWidth: 300, margin: "0 auto" }}>
-                  Implementation plans from AI coding sessions will appear here. You can convert them into projects with subtasks.
+                <p style={{ color: "var(--text-secondary)", fontSize: 13, maxWidth: 340, margin: "0 auto", lineHeight: 1.6 }}>
+                  When the AI agent works on features, implementation plans automatically appear here as projects with tracked subtasks.
                 </p>
+                <div style={{ marginTop: 16, padding: 12, background: "var(--bg-secondary)", borderRadius: "var(--radius-md)", fontSize: 12, color: "var(--text-secondary)", fontFamily: "monospace" }}>
+                  POST /api/ai-sync<br />
+                  {"{"} action: &quot;create_plan&quot;, token: &quot;uid&quot;, title, tasks [...] {"}"}
+                </div>
               </div>
             )}
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {aiPlans.map(plan => (
-                <div key={plan.id} className="card" style={{ padding: 16 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                    <div>
-                      <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 2 }}>{plan.title}</h4>
-                      <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
-                        {plan.createdAt ? new Date(plan.createdAt).toLocaleDateString() : "Unknown date"}
+              {aiProjects.map(project => {
+                const progress = getProgress(project.id);
+                const subtasks = getSubtasks(project.id);
+
+                return (
+                  <div key={project.id} className="card" style={{ padding: 16 }}>
+                    {/* Header */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <h4 style={{ fontSize: 14, fontWeight: 600 }}>{project.title}</h4>
+                          <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 4, background: "rgba(124,58,237,0.1)", color: "#7c3aed", fontWeight: 600 }}>AI</span>
+                        </div>
+                        <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
+                          {project.createdAt ? new Date(project.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}
+                        </span>
+                      </div>
+                      <span className="badge" style={STATUS_COLORS[project.status] || STATUS_COLORS.todo}>
+                        {(project.status || "todo").replace("_", " ")}
                       </span>
                     </div>
-                    <span className="badge" style={PLAN_STATUS_COLORS[plan.status || "draft"]}>
-                      {(plan.status || "draft").replace("_", " ")}
-                    </span>
-                  </div>
 
-                  {plan.summary && <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 8, lineHeight: 1.5 }}>{plan.summary}</p>}
-
-                  {plan.tasks?.length > 0 && (
-                    <div style={{ marginBottom: 8 }}>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>Tasks ({plan.tasks.length})</div>
-                      {plan.tasks.slice(0, 5).map((task, i) => (
-                        <div key={i} style={{ fontSize: 12, color: "var(--text-secondary)", padding: "2px 0", display: "flex", gap: 4 }}>
-                          <span style={{ color: "var(--text-tertiary)" }}>•</span>
-                          {typeof task === "string" ? task : task.title}
-                        </div>
-                      ))}
-                      {plan.tasks.length > 5 && <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>+{plan.tasks.length - 5} more</div>}
-                    </div>
-                  )}
-
-                  <div style={{ display: "flex", gap: 8 }}>
-                    {!plan.convertedAt && (
-                      <button className="btn btn-primary btn-sm" onClick={() => handleConvertAiPlan(plan)}>
-                        Convert to Project
-                      </button>
+                    {/* Description */}
+                    {project.description && (
+                      <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 8, lineHeight: 1.5 }}>{project.description}</p>
                     )}
-                    {plan.convertedAt && <span style={{ fontSize: 11, color: "var(--success)" }}>✅ Converted</span>}
-                    <button className="btn btn-sm" onClick={() => handleDeleteAiPlan(plan.id)}>Delete</button>
+
+                    {/* Progress bar */}
+                    {progress && (
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text-secondary)", marginBottom: 4 }}>
+                          <span>Progress</span>
+                          <span>{progress.done}/{progress.total} ({progress.pct}%)</span>
+                        </div>
+                        <div style={{ height: 6, background: "var(--bg-secondary)", borderRadius: 3, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${progress.pct}%`, background: progress.pct === 100 ? "var(--success)" : "var(--accent)", borderRadius: 3, transition: "width 0.3s" }} />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Subtasks */}
+                    {subtasks.length > 0 && (
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>Tasks ({subtasks.length})</div>
+                        {subtasks.map(task => (
+                          <div key={task.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 0", fontSize: 12 }}>
+                            <span style={{ fontSize: 10, width: 14, textAlign: "center" }}>
+                              {task.status === "done" ? "✅" : task.status === "in_progress" ? "🔄" : "⬜"}
+                            </span>
+                            <span style={{
+                              flex: 1,
+                              color: task.status === "done" ? "var(--text-tertiary)" : "var(--text-primary)",
+                              textDecoration: task.status === "done" ? "line-through" : "none",
+                            }}>{task.title}</span>
+                            <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>{(task.status || "todo").replace("_", " ")}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {project.sourceRef && (
+                      <div style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 4 }}>Session: {project.sourceRef}</div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
