@@ -18,6 +18,7 @@ import WeeklyReview from "./WeeklyReview";
 import PlanningView from "./PlanningView";
 import TaskDetailSheet from "./TaskDetailSheet";
 import CreateItemModal from "./CreateItemModal";
+import SettingsPanel from "./SettingsPanel";
 
 const VIEW_COMPONENTS = {
   today: "Today",
@@ -341,7 +342,7 @@ export default function ProjectHub() {
         {activeViewId === "planning" && <PlanningView items={viewItems} onUpdate={handleUpdate} onSelect={setSelectedItem} onImplementPlan={handleImplementPlan} />}
         {activeViewId === "habits" && <HabitTracker />}
         {activeViewId === "goals" && <GoalsView items={items} />}
-        {activeViewId === "review" && <WeeklyReview items={items} habits={habits} />}
+        {activeViewId === "review" && <WeeklyReview items={items} habits={habits} onCreateJournal={handleCreate} />}
 
         {selectedItem && (
           <TaskDetailSheet

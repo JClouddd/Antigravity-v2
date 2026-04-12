@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
+import { useState, useMemo } from "react";
 
-export default function WeeklyReview({ items, habits }) {
+export default function WeeklyReview({ items, habits, onCreateJournal }) {
+  const [journalText, setJournalText] = useState("");
   const today = new Date();
   const weekStart = new Date(today);
-  weekStart.setDate(today.getDate() - today.getDay()); // Sunday
+  weekStart.setDate(today.getDate() - today.getDay());
   const weekStartStr = weekStart.toISOString().split("T")[0];
   const todayStr = today.toISOString().split("T")[0];
 
@@ -17,43 +18,42 @@ export default function WeeklyReview({ items, habits }) {
       return d && d >= weekStartStr && d <= todayStr;
     });
 
-    const completed = thisWeek.filter(i => i.status === "done");
+    const completed = thisWeek.filter(i => i.status === "done" && i.type !== "journal");
     const created = items.filter(i => i.createdAt?.split("T")[0] >= weekStartStr);
     const overdue = items.filter(i => i.dueDate && i.dueDate < todayStr && i.status !== "done");
     const inProgress = items.filter(i => i.status === "in_progress");
 
-    // By project
     const projectBreakdown = {};
     completed.forEach(i => {
       const key = i.parentId || "__standalone";
       if (!projectBreakdown[key]) projectBreakdown[key] = { count: 0, title: "" };
       projectBreakdown[key].count++;
     });
-    // Resolve project names
     const projects = items.filter(i => i.type === "project");
     Object.keys(projectBreakdown).forEach(k => {
       const p = projects.find(p => p.id === k);
       projectBreakdown[k].title = p?.title || "Standalone Tasks";
     });
 
-    // By type
     const byType = { project: 0, task: 0, subtask: 0, event: 0 };
     completed.forEach(i => { if (byType[i.type] !== undefined) byType[i.type]++; });
 
-    // Upcoming next week
     const nextWeekEnd = new Date(today);
     nextWeekEnd.setDate(today.getDate() + 7);
     const nextWeekStr = nextWeekEnd.toISOString().split("T")[0];
     const upcoming = items.filter(i => i.dueDate && i.dueDate > todayStr && i.dueDate <= nextWeekStr && i.status !== "done");
 
-    // Habit streaks
     const habitSummary = (habits || []).map(h => ({
       title: h.title,
       streak: h.streak || 0,
       thisWeek: (h.completions || []).filter(d => d >= weekStartStr).length,
     }));
 
-    return { completed, created, overdue, inProgress, projectBreakdown, byType, upcoming, habitSummary };
+    // Journal entries this week
+    const journals = items.filter(i => i.type === "journal" && (i.date || i.createdAt?.split("T")[0]) >= weekStartStr)
+      .sort((a, b) => (b.date || b.createdAt || "").localeCompare(a.date || a.createdAt || ""));
+
+    return { completed, created, overdue, inProgress, projectBreakdown, byType, upcoming, habitSummary, journals };
   }, [items, habits, weekStartStr, todayStr]);
 
   if (!stats) return <div style={{ padding: 20, color: "var(--text-tertiary)", textAlign: "center" }}>Loading review...</div>;
@@ -65,6 +65,19 @@ export default function WeeklyReview({ items, habits }) {
       <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{label}</div>
     </div>
   );
+
+  const handleAddJournal = () => {
+    if (!journalText.trim() || !onCreateJournal) return;
+    onCreateJournal({
+      type: "journal",
+      title: `Reflection — ${new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}`,
+      description: journalText.trim(),
+      status: "done",
+      date: todayStr,
+      notes: journalText.trim(),
+    });
+    setJournalText("");
+  };
 
   return (
     <div style={{ padding: 20, maxWidth: 640 }}>
@@ -79,6 +92,36 @@ export default function WeeklyReview({ items, habits }) {
         <StatCard label="Created" value={stats.created.length} color="#2563eb" icon="➕" />
         <StatCard label="Overdue" value={stats.overdue.length} color="#dc2626" icon="⚠️" />
         <StatCard label="In Progress" value={stats.inProgress.length} color="#d97706" icon="⏳" />
+      </div>
+
+      {/* Journal / Reflection */}
+      <div className="card" style={{ padding: 16, marginBottom: 12 }}>
+        <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>📓 Journal & Reflections</h3>
+        <div style={{ display: "flex", gap: 8, marginBottom: stats.journals.length > 0 ? 12 : 0 }}>
+          <textarea
+            value={journalText}
+            onChange={(e) => setJournalText(e.target.value)}
+            placeholder="Write a reflection... What went well? What can improve?"
+            rows={2}
+            style={{ flex: 1, fontSize: 13, resize: "vertical", padding: "8px 10px" }}
+          />
+          <button className="btn btn-sm btn-primary" onClick={handleAddJournal} disabled={!journalText.trim()}
+            style={{ alignSelf: "flex-end", whiteSpace: "nowrap" }}>
+            Add Entry
+          </button>
+        </div>
+        {stats.journals.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {stats.journals.map(j => (
+              <div key={j.id} style={{ padding: "8px 10px", background: "var(--bg-secondary)", borderRadius: "var(--radius-sm)", borderLeft: "3px solid #7c3aed" }}>
+                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 2 }}>
+                  {new Date(j.date || j.createdAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                </div>
+                <div style={{ fontSize: 13 }}>{j.description || j.notes || j.title}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Completion by Type */}

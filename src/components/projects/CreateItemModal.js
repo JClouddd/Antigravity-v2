@@ -8,6 +8,9 @@ const ITEM_TYPES = [
   { key: "task", label: "Task", desc: "Standalone action item", icon: "✅" },
   { key: "event", label: "Event", desc: "Calendar event with time block", icon: "📅" },
   { key: "plan", label: "Plan", desc: "Blueprint or objective — implement when ready", icon: "📋" },
+  { key: "goal", label: "Goal", desc: "OKR objective with key results", icon: "🎯" },
+  { key: "habit", label: "Habit", desc: "Daily or weekly recurring habit to track", icon: "🔄" },
+  { key: "journal", label: "Journal Entry", desc: "Reflection or review note", icon: "📓" },
 ];
 
 const PRIORITIES = ["low", "medium", "high", "urgent"];
@@ -65,6 +68,36 @@ export default function CreateItemModal({ projects, activeProject, defaultStatus
         startDate: startDate || null,
         dueDate: dueDate || null,
         _subtasks: subtasks,
+      });
+    } else if (type === "goal") {
+      await onCreate({
+        type: "goal",
+        title: title.trim(),
+        description,
+        status: "active",
+        priority,
+        color: color || "#7c3aed",
+        startDate: startDate || null,
+        dueDate: dueDate || null,
+      });
+    } else if (type === "habit") {
+      await onCreate({
+        type: "habit",
+        title: title.trim(),
+        description,
+        status: "active",
+        frequency: "daily",
+        color: color || "#059669",
+        startDate: new Date().toISOString().split("T")[0],
+      });
+    } else if (type === "journal") {
+      await onCreate({
+        type: "journal",
+        title: title.trim(),
+        description,
+        status: "done",
+        date: new Date().toISOString().split("T")[0],
+        notes: notes || "",
       });
     } else {
       await onCreate({
@@ -131,7 +164,7 @@ export default function CreateItemModal({ projects, activeProject, defaultStatus
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
               </button>
               <h3 style={{ fontSize: 16, fontWeight: 600 }}>
-                New {type === "project" ? "Project" : type === "event" ? "Event" : "Task"}
+                New {ITEM_TYPES.find(t => t.key === type)?.label || type}
               </h3>
             </div>
 
@@ -144,8 +177,8 @@ export default function CreateItemModal({ projects, activeProject, defaultStatus
                 rows={2} style={{ resize: "vertical", fontSize: 14 }}
               />
 
-              {/* Project/Plan: Color picker */}
-              {(type === "project" || type === "plan") && (
+              {/* Project/Plan/Goal/Habit: Color picker */}
+              {(type === "project" || type === "plan" || type === "goal" || type === "habit") && (
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 6, display: "block" }}>Color</label>
                   <div style={{ display: "flex", gap: 6 }}>
