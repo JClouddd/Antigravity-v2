@@ -100,12 +100,8 @@ export async function syncItemToGoogle(accessToken, item, updateItemCallback) {
   if (!accessToken) { console.warn("[SYNC] No access token — skipping"); return; }
 
   try {
-    if (item.type === "event" || item.timeBlock) {
-      // Must have a date to create a calendar event
-      if (!item.timeBlock?.date && !item.startDate && !item.dueDate) {
-        console.warn(`[SYNC] Skipping calendar sync for "${item.title}" — no date set`);
-        return;
-      }
+    if (item.type === "event") {
+      // Events → Google Calendar
       if (item.googleCalendarEventId) {
         console.log(`[SYNC] Updating calendar event: ${item.title}`);
         await updateCalendarEvent(accessToken, item.googleCalendarEventId, item);
@@ -116,6 +112,7 @@ export async function syncItemToGoogle(accessToken, item, updateItemCallback) {
         await updateItemCallback({ googleCalendarEventId: created.id });
       }
     } else if (item.type === "task" || item.type === "subtask") {
+      // Tasks → Google Tasks
       if (item.googleTaskId) {
         console.log(`[SYNC] Updating Google Task: ${item.title}`);
         await updateGoogleTask(accessToken, item.googleTaskId, item);
@@ -123,15 +120,31 @@ export async function syncItemToGoogle(accessToken, item, updateItemCallback) {
         console.log(`[SYNC] Creating Google Task: ${item.title}`);
         const created = await createGoogleTask(accessToken, item);
         console.log(`[SYNC] Created task ID: ${created.id}`);
-        await updateItemCallback({ googleTaskId: created.id });
+        const updates = { googleTaskId: created.id };
+
+        // Also create a Calendar event for tasks WITH dates (so they show in Calendar widget)
+        if (item.startDate || item.dueDate || item.timeBlock?.date) {
+          try {
+            const calEvent = await createCalendarEvent(accessToken, { ...item, summary: `✅ ${item.title}` });
+            updates.googleCalendarEventId = calEvent.id;
+            console.log(`[SYNC] Also created calendar entry for task: ${calEvent.id}`);
+          } catch (calErr) {
+            console.warn(`[SYNC] Calendar mirror for task failed (non-critical):`, calErr.message);
+          }
+        }
+        await updateItemCallback(updates);
+      }
+      // Update calendar mirror if it exists
+      if (item.googleCalendarEventId) {
+        try {
+          await updateCalendarEvent(accessToken, item.googleCalendarEventId, { ...item, title: `✅ ${item.title}` });
+        } catch { /* non-critical */ }
       }
     } else if (item.type === "project") {
-      // Projects don't sync to Google directly
       console.log(`[SYNC] Skipping project: ${item.title}`);
     }
   } catch (err) {
     console.error(`[SYNC] Error syncing "${item.title}":`, err.message);
-    // If 401/403, token is likely expired or missing scopes
     if (err.message.includes("401") || err.message.includes("403")) {
       console.error("[SYNC] Token expired or missing scopes. User needs to reconnect Google.");
     }
@@ -151,6 +164,13 @@ export async function unsyncItemFromGoogle(accessToken, item) {
 
 // ===== CONVERTERS =====
 
+// Helper: Google Calendar all-day end dates are EXCLUSIVE (day after)
+function nextDay(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().split("T")[0];
+}
+
 function itemToCalendarEvent(item) {
   const event = {
     summary: item.title,
@@ -158,26 +178,32 @@ function itemToCalendarEvent(item) {
     location: item.location || undefined,
   };
 
-  // Time — use timeBlock first, then dates, then default to today
-  if (item.timeBlock?.date) {
-    if (item.allDay) {
-      event.start = { date: item.timeBlock.date };
-      event.end = { date: item.timeBlock.date };
-    } else {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      event.start = { dateTime: `${item.timeBlock.date}T${item.timeBlock.startTime || "09:00"}:00`, timeZone: tz };
-      event.end = { dateTime: `${item.timeBlock.date}T${item.timeBlock.endTime || "10:00"}:00`, timeZone: tz };
-    }
+  const hasTimeBlock = item.timeBlock?.date;
+  const hasSpecificTimes = item.timeBlock?.startTime && item.timeBlock?.endTime;
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  if (hasTimeBlock && hasSpecificTimes) {
+    // Specific time block → timed event
+    event.start = { dateTime: `${item.timeBlock.date}T${item.timeBlock.startTime}:00`, timeZone: tz };
+    event.end = { dateTime: `${item.timeBlock.date}T${item.timeBlock.endTime}:00`, timeZone: tz };
+  } else if (hasTimeBlock && !hasSpecificTimes) {
+    // Has date but no times → all-day event on that date
+    event.start = { date: item.timeBlock.date };
+    event.end = { date: nextDay(item.timeBlock.date) };
+  } else if (item.startDate && item.dueDate) {
+    // Date range → multi-day all-day event
+    event.start = { date: item.startDate };
+    event.end = { date: nextDay(item.dueDate) };
   } else if (item.startDate || item.dueDate) {
-    const start = item.startDate || item.dueDate;
-    const end = item.dueDate || item.startDate;
-    event.start = { date: start };
-    event.end = { date: end };
+    // Single date → single all-day event
+    const d = item.startDate || item.dueDate;
+    event.start = { date: d };
+    event.end = { date: nextDay(d) };
   } else {
-    // Fallback: all-day event today
+    // No dates at all → all-day today
     const today = new Date().toISOString().split("T")[0];
     event.start = { date: today };
-    event.end = { date: today };
+    event.end = { date: nextDay(today) };
   }
 
   // Reminders
