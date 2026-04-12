@@ -67,7 +67,14 @@ const PAGE_COMPONENTS = {
 export default function AppShell() {
   const { user, logout, googleAccessToken } = useAuth();
   const { theme, setTheme, preference } = useTheme();
-  const [activePage, setActivePage] = useState("dashboard");
+  const [activePage, _setActivePage] = useState(() => {
+    if (typeof window === "undefined") return "dashboard";
+    try { return localStorage.getItem("hub_active_page") || "dashboard"; } catch { return "dashboard"; }
+  });
+  const setActivePage = (page) => {
+    _setActivePage(page);
+    try { localStorage.setItem("hub_active_page", page); } catch {}
+  };
   const [settings, setSettings] = useState(null);
   const [allItems, setAllItems] = useState([]);
   const [commandOpen, setCommandOpen] = useState(false);

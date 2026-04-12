@@ -49,13 +49,22 @@ export default function SettingsPage() {
   };
   const handleDragEnd = () => { setDragIdx(null); setDragType(null); };
 
+  const handleMoveUp = (arr, setArr, idx) => {
+    if (idx === 0) return;
+    const u = [...arr]; [u[idx - 1], u[idx]] = [u[idx], u[idx - 1]]; setArr(u);
+  };
+  const handleMoveDown = (arr, setArr, idx) => {
+    if (idx >= arr.length - 1) return;
+    const u = [...arr]; [u[idx], u[idx + 1]] = [u[idx + 1], u[idx]]; setArr(u);
+  };
+
   const DraggableList = ({ items, setItems, type }) => (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       {items.map((item, idx) => (
         <div key={item.id} draggable onDragStart={() => handleDragStart(type, idx)}
           onDragOver={(e) => handleDragOver(e, type, items, setItems, idx)} onDragEnd={handleDragEnd}
           style={{
-            display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
+            display: "flex", alignItems: "center", gap: 6, padding: "8px 10px",
             background: dragType === type && dragIdx === idx ? "var(--accent-light)" : "var(--bg-secondary)",
             borderRadius: "var(--radius-sm)", cursor: "grab", opacity: item.enabled ? 1 : 0.5,
           }}>
@@ -71,6 +80,14 @@ export default function SettingsPage() {
           <input type="text" value={item.label} onChange={(e) => handleRename(items, setItems, idx, e.target.value)}
             style={{ flex: 1, fontSize: 13, fontWeight: 500, padding: "4px 6px", border: "1px solid transparent", borderRadius: 4, background: "transparent" }}
             onFocus={(e) => e.target.style.borderColor = "var(--border)"} onBlur={(e) => e.target.style.borderColor = "transparent"} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+            <button onClick={() => handleMoveUp(items, setItems, idx)} disabled={idx === 0}
+              style={{ background: "none", border: "none", cursor: idx === 0 ? "default" : "pointer", padding: 0, fontSize: 10, lineHeight: 1, color: idx === 0 ? "var(--border)" : "var(--text-secondary)" }}
+              title="Move up">▲</button>
+            <button onClick={() => handleMoveDown(items, setItems, idx)} disabled={idx >= items.length - 1}
+              style={{ background: "none", border: "none", cursor: idx >= items.length - 1 ? "default" : "pointer", padding: 0, fontSize: 10, lineHeight: 1, color: idx >= items.length - 1 ? "var(--border)" : "var(--text-secondary)" }}
+              title="Move down">▼</button>
+          </div>
           <span style={{ fontSize: 9, color: "var(--text-tertiary)", fontFamily: "monospace" }}>{item.id}</span>
         </div>
       ))}
