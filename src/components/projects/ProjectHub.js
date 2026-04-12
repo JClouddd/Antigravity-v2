@@ -19,6 +19,7 @@ export default function ProjectHub() {
   const [activeProject, setActiveProject] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [createDefaults, setCreateDefaults] = useState({});
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
@@ -35,24 +36,76 @@ export default function ProjectHub() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // Create item — handles project + inline subtasks
   const handleCreate = async (data) => {
+    const subtasksData = data._subtasks || [];
+    delete data._subtasks;
+
     const item = await createItem(user.uid, data);
-    if (item) {
-      setItems((prev) => [item, ...prev]);
-      setShowCreate(false);
+    if (!item) return;
+
+    const newItems = [item];
+
+    // If project with inline subtasks, create them
+    if (data.type === "project" && subtasksData.length > 0) {
+      for (const st of subtasksData) {
+        const subtask = await createItem(user.uid, {
+          type: "subtask",
+          title: st.title,
+          priority: st.priority || "medium",
+          status: data.status || "todo",
+          parentId: item.id,
+        });
+        if (subtask) newItems.push(subtask);
+      }
     }
+
+    setItems((prev) => [...newItems, ...prev]);
+    setShowCreate(false);
+    setCreateDefaults({});
   };
 
+  // Update item — with cascade logic for projects
   const handleUpdate = async (itemId, updates) => {
     await updateItem(user.uid, itemId, updates);
-    setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, ...updates } : i)));
+    let updatedItems = items.map((i) => (i.id === itemId ? { ...i, ...updates } : i));
+
+    // Cascade: marking a project "done" marks all its subtasks "done"
+    if (updates.status === "done") {
+      const item = items.find((i) => i.id === itemId);
+      if (item?.type === "project") {
+        const children = items.filter((i) => i.parentId === itemId && i.status !== "done");
+        for (const child of children) {
+          await updateItem(user.uid, child.id, { status: "done" });
+        }
+        updatedItems = updatedItems.map((i) =>
+          i.parentId === itemId ? { ...i, status: "done" } : i
+        );
+      }
+    }
+
+    setItems(updatedItems);
     if (selectedItem?.id === itemId) setSelectedItem((prev) => ({ ...prev, ...updates }));
   };
 
   const handleDelete = async (itemId) => {
+    // Also delete child subtasks if it's a project
+    const item = items.find((i) => i.id === itemId);
+    if (item?.type === "project") {
+      const children = items.filter((i) => i.parentId === itemId);
+      for (const child of children) {
+        await deleteItem(user.uid, child.id);
+      }
+    }
     await deleteItem(user.uid, itemId);
-    setItems((prev) => prev.filter((i) => i.id !== itemId));
+    setItems((prev) => prev.filter((i) => i.id !== itemId && i.parentId !== itemId));
     if (selectedItem?.id === itemId) setSelectedItem(null);
+  };
+
+  // Open create modal with pre-set parent (for adding subtask to project)
+  const handleAddSubtaskToProject = (projectId) => {
+    setCreateDefaults({ parentId: projectId, type: "subtask" });
+    setShowCreate(true);
   };
 
   const projects = getProjects(items);
@@ -78,45 +131,32 @@ export default function ProjectHub() {
             <h1>{activeView === "Planning" ? "Planning" : "Projects"}</h1>
             <p>{activeView === "Planning" ? "Items under consideration — not yet committed." : "Manage projects, tasks, and events."}</p>
           </div>
-          <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+          <button className="btn btn-primary" onClick={() => { setCreateDefaults({}); setShowCreate(true); }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Add Item
           </button>
         </div>
 
-        {/* Project Filter Chips — hide on Planning view */}
         {activeView !== "Planning" && projects.length > 0 && (
           <div style={{ display: "flex", gap: 6, marginTop: 14, flexWrap: "wrap" }}>
             <button className={`btn btn-sm ${!activeProject ? "btn-primary" : ""}`} onClick={() => setActiveProject(null)}>All</button>
             {projects.map((p) => (
-              <button
-                key={p.id}
-                className={`btn btn-sm ${activeProject === p.id ? "btn-primary" : ""}`}
+              <button key={p.id} className={`btn btn-sm ${activeProject === p.id ? "btn-primary" : ""}`}
                 onClick={() => setActiveProject(p.id)}
                 style={activeProject !== p.id ? { borderLeft: `3px solid ${p.color}` } : {}}
-              >
-                {p.title}
-              </button>
+              >{p.title}</button>
             ))}
           </div>
         )}
 
-        {/* View Tabs */}
         <div style={{ display: "flex", gap: 0, marginTop: 12, borderBottom: "1px solid var(--border)" }}>
           {VIEWS.map((v) => (
-            <button
-              key={v}
-              onClick={() => setActiveView(v)}
-              style={{
-                padding: "8px 14px", fontSize: 13, fontWeight: 500,
-                border: "none", background: "none", cursor: "pointer",
-                color: activeView === v ? "var(--accent)" : "var(--text-secondary)",
-                borderBottom: activeView === v ? "2px solid var(--accent)" : "2px solid transparent",
-                transition: "all 0.15s",
-              }}
-            >
-              {v}
-            </button>
+            <button key={v} onClick={() => setActiveView(v)} style={{
+              padding: "8px 14px", fontSize: 13, fontWeight: 500, border: "none", background: "none", cursor: "pointer",
+              color: activeView === v ? "var(--accent)" : "var(--text-secondary)",
+              borderBottom: activeView === v ? "2px solid var(--accent)" : "2px solid transparent",
+              transition: "all 0.15s",
+            }}>{v}</button>
           ))}
         </div>
       </div>
@@ -124,16 +164,16 @@ export default function ProjectHub() {
       <div className="page-body" style={{ position: "relative" }}>
         {showCreate && (
           <CreateItemModal
-            projects={projects}
-            activeProject={activeProject}
+            projects={projects} activeProject={activeProject}
             defaultStatus={activeView === "Planning" ? "planning" : "todo"}
-            onCreate={handleCreate}
-            onClose={() => setShowCreate(false)}
+            defaults={createDefaults}
+            onCreate={handleCreate} onClose={() => { setShowCreate(false); setCreateDefaults({}); }}
           />
         )}
 
         {activeView === "Board" && (
-          <KanbanBoard items={filteredItems} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} />
+          <KanbanBoard items={filteredItems} allItems={items} projects={projects}
+            onUpdate={handleUpdate} onSelect={setSelectedItem} onAddSubtask={handleAddSubtaskToProject} />
         )}
         {activeView === "Table" && (
           <TableView items={filteredItems} projects={projects} onUpdate={handleUpdate} onSelect={setSelectedItem} />
@@ -154,6 +194,7 @@ export default function ProjectHub() {
             onUpdate={(updates) => handleUpdate(selectedItem.id, updates)}
             onDelete={() => handleDelete(selectedItem.id)}
             onClose={() => setSelectedItem(null)}
+            onAddSubtask={() => handleAddSubtaskToProject(selectedItem.id)}
           />
         )}
       </div>
