@@ -3,12 +3,19 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "@/lib/AuthContext";
 import { getApiUsage, logApiCall, COST_REFERENCE } from "@/lib/apiCostTracker";
+import SplitAgreements from "@/components/finance/SplitAgreements";
+import RecurringTab from "@/components/finance/RecurringTab";
+import NetWorthTab from "@/components/finance/NetWorthTab";
+import CategoriesEditor from "@/components/finance/CategoriesEditor";
 
 // ─── Tab Config ──────────────────────────────────────────────────────────────
 const TABS = [
   { id: "overview", label: "📊 Overview" },
   { id: "transactions", label: "💳 Transactions" },
+  { id: "splits", label: "✂️ Splits" },
+  { id: "recurring", label: "📅 Recurring" },
   { id: "budget", label: "📋 Budget" },
+  { id: "networth", label: "📈 Net Worth" },
   { id: "advisor", label: "🤖 AI Advisor" },
   { id: "costs", label: "⚡ API Costs" },
   { id: "settings", label: "⚙️ Settings" },
@@ -474,6 +481,16 @@ export default function FinanceModule() {
           </div>
         )}
 
+        {/* ═══════ SPLITS ═══════ */}
+        {tab === "splits" && !loading && (
+          <SplitAgreements user={user} transactions={transactions} />
+        )}
+
+        {/* ═══════ RECURRING ═══════ */}
+        {tab === "recurring" && !loading && (
+          <RecurringTab user={user} profileId={activeProfile} />
+        )}
+
         {/* ═══════ BUDGET ═══════ */}
         {tab === "budget" && !loading && (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -505,6 +522,11 @@ export default function FinanceModule() {
               );
             })}
           </div>
+        )}
+
+        {/* ═══════ NET WORTH ═══════ */}
+        {tab === "networth" && !loading && (
+          <NetWorthTab user={user} accounts={accounts} profileId={activeProfile} />
         )}
 
         {/* ═══════ AI ADVISOR ═══════ */}
@@ -622,6 +644,11 @@ export default function FinanceModule() {
         {/* ═══════ SETTINGS ═══════ */}
         {tab === "settings" && !loading && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Categories Editor */}
+            <CategoriesEditor user={user} />
+
+            <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "4px 0" }} />
+
             {/* Environment Toggle */}
             <div>
               <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 10, color: "var(--text-secondary)" }}>Plaid Environment</h3>
