@@ -6,12 +6,12 @@ import { getApiUsage, logApiCall, COST_REFERENCE } from "@/lib/apiCostTracker";
 
 // ─── Tab Config ──────────────────────────────────────────────────────────────
 const TABS = [
-  { id: "overview", label: "Overview", icon: "📊" },
-  { id: "transactions", label: "Transactions", icon: "💳" },
-  { id: "budget", label: "Budget", icon: "📋" },
-  { id: "advisor", label: "AI Advisor", icon: "🤖" },
-  { id: "costs", label: "API Costs", icon: "⚡" },
-  { id: "settings", label: "Settings", icon: "⚙️" },
+  { id: "overview", label: "📊 Overview" },
+  { id: "transactions", label: "💳 Transactions" },
+  { id: "budget", label: "📋 Budget" },
+  { id: "advisor", label: "🤖 AI Advisor" },
+  { id: "costs", label: "⚡ API Costs" },
+  { id: "settings", label: "⚙️ Settings" },
 ];
 
 const PLAID_ENVS = [
@@ -48,7 +48,7 @@ const DEFAULT_PROFILES = [
   { id: "personal", name: "Personal", icon: "👤" },
 ];
 
-// ─── Budget defaults (user can customize) ────────────────────────────────────
+// ─── Budget defaults ─────────────────────────────────────────────────────────
 const DEFAULT_BUDGETS = [
   { category: "FOOD_AND_DRINK", limit: 800 },
   { category: "TRANSPORTATION", limit: 400 },
@@ -57,42 +57,6 @@ const DEFAULT_BUDGETS = [
   { category: "GENERAL_MERCHANDISE", limit: 500 },
   { category: "PERSONAL_CARE", limit: 150 },
 ];
-
-// ─── Styles ──────────────────────────────────────────────────────────────────
-const s = {
-  page: { padding: "0", minHeight: "100%" },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 20 },
-  title: { fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", gap: 10 },
-  profileBar: { display: "flex", gap: 6, alignItems: "center" },
-  profileChip: (active) => ({
-    padding: "5px 12px", borderRadius: 8, fontSize: 13, cursor: "pointer", fontWeight: active ? 600 : 400,
-    background: active ? "var(--accent-dim)" : "transparent", color: active ? "var(--accent)" : "var(--text-tertiary)",
-    border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`, transition: "all 0.2s",
-  }),
-  tabs: { display: "flex", gap: 2, marginBottom: 20, background: "var(--bg-secondary)", padding: 3, borderRadius: 10, flexWrap: "wrap" },
-  tab: (active) => ({
-    padding: "7px 14px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "none",
-    background: active ? "var(--bg-elevated)" : "transparent", color: active ? "var(--text-primary)" : "var(--text-tertiary)",
-    fontWeight: active ? 600 : 400, transition: "all 0.2s", display: "flex", gap: 5, alignItems: "center",
-    boxShadow: active ? "var(--shadow-sm)" : "none",
-  }),
-  card: { background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 12, padding: 16 },
-  statGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 20 },
-  statValue: { fontSize: 24, fontWeight: 700, marginBottom: 2 },
-  statLabel: { fontSize: 11, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px" },
-  btn: { background: "var(--accent)", border: "none", padding: "8px 16px", borderRadius: 8, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" },
-  btnGhost: { background: "transparent", border: "1px solid var(--border)", padding: "6px 12px", borderRadius: 8, color: "var(--text-secondary)", fontSize: 12, cursor: "pointer" },
-  input: { background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", color: "var(--text-primary)", fontSize: 13, width: "100%" },
-  budgetBar: (pct) => ({
-    width: `${Math.min(pct, 100)}%`, height: 6, borderRadius: 3, transition: "width 0.5s ease",
-    background: pct > 90 ? "#ef4444" : pct > 70 ? "#f59e0b" : "#10b981",
-  }),
-  envBadge: (env) => ({
-    fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, letterSpacing: "0.05em",
-    background: env === "production" ? "rgba(239,68,68,0.15)" : "rgba(16,185,129,0.15)",
-    color: env === "production" ? "#ef4444" : "#10b981",
-  }),
-};
 
 // ─── Component ───────────────────────────────────────────────────────────────
 export default function FinanceModule() {
@@ -216,7 +180,6 @@ export default function FinanceModule() {
       if (env) setPlaidEnv(env);
       if (!link_token) return;
 
-      // Load Plaid Link script
       const loadAndOpen = () => {
         const handler = window.Plaid.create({
           token: link_token,
@@ -310,188 +273,218 @@ export default function FinanceModule() {
 
   const uniqueCategories = useMemo(() => [...new Set(transactions.map(t => t.category || "OTHER"))].sort(), [transactions]);
 
+  const envBadge = { fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 100, letterSpacing: "0.05em",
+    background: plaidEnv === "production" ? "rgba(239,68,68,0.15)" : "rgba(16,185,129,0.15)",
+    color: plaidEnv === "production" ? "#ef4444" : "#10b981",
+  };
+
+  const budgetBar = (pct) => ({
+    width: `${Math.min(pct, 100)}%`, height: 6, borderRadius: 3, transition: "width 0.5s ease",
+    background: pct > 90 ? "#ef4444" : pct > 70 ? "#f59e0b" : "#10b981",
+  });
+
   // ─── Render ────────────────────────────────────────────────────────────────
   return (
-    <div style={s.page}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {/* Header */}
-      <div style={s.header}>
-        <div style={s.title}>
-          💰 Financial Command Center
-          <span style={s.envBadge(plaidEnv)}>{plaidEnv.toUpperCase()}</span>
+      <div style={{ padding: "24px 32px 0" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 700, display: "flex", alignItems: "center", gap: 10 }}>
+            Finance <span style={envBadge}>{plaidEnv.toUpperCase()}</span>
+          </h1>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            {profiles.map(p => (
+              <button key={p.id} onClick={() => setActiveProfile(p.id)}
+                className={activeProfile === p.id ? "btn btn-primary btn-sm" : "btn btn-sm"}
+                style={{ fontSize: 12 }}>
+                {p.icon} {p.name}
+              </button>
+            ))}
+            <button className="btn btn-sm" style={{ borderStyle: "dashed", fontSize: 12 }}
+              onClick={() => setShowAddProfile(!showAddProfile)}>+</button>
+          </div>
         </div>
-        <div style={s.profileBar}>
-          {profiles.map(p => (
-            <div key={p.id} style={s.profileChip(activeProfile === p.id)} onClick={() => setActiveProfile(p.id)}>
-              {p.icon} {p.name}
-            </div>
-          ))}
-          <div style={{ ...s.profileChip(false), borderStyle: "dashed", color: "var(--accent)" }} onClick={() => setShowAddProfile(!showAddProfile)}>+</div>
-        </div>
+        <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 16 }}>
+          Accounts, spending, budgets, and financial intelligence
+        </p>
       </div>
 
-      {/* Add Profile */}
+      {/* Add Profile inline */}
       {showAddProfile && (
-        <div style={{ ...s.card, display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
-          <input value={newProfileName} onChange={e => setNewProfileName(e.target.value)} placeholder="Partner name..." style={{ ...s.input, flex: 1 }} onKeyDown={e => e.key === "Enter" && addProfile()} />
-          <button onClick={addProfile} style={s.btn}>Add</button>
+        <div style={{ padding: "0 32px 8px", display: "flex", gap: 8 }}>
+          <input value={newProfileName} onChange={e => setNewProfileName(e.target.value)}
+            placeholder="Profile name..." className="input" style={{ flex: 1 }}
+            onKeyDown={e => e.key === "Enter" && addProfile()} />
+          <button className="btn btn-primary btn-sm" onClick={addProfile}>Add</button>
         </div>
       )}
 
-      {/* Tabs */}
-      <div style={s.tabs}>
+      {/* Tab bar — matches Life / Time / Planning pattern */}
+      <div style={{ display: "flex", gap: 0, padding: "0 32px", borderBottom: "1px solid var(--border)" }}>
         {TABS.map(t => (
-          <button key={t.id} style={s.tab(tab === t.id)} onClick={() => setTab(t.id)}>{t.icon} {t.label}</button>
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            padding: "10px 16px", fontSize: 13, fontWeight: 500, cursor: "pointer",
+            border: "none", background: "none",
+            color: tab === t.id ? "var(--accent)" : "var(--text-secondary)",
+            borderBottom: tab === t.id ? "2px solid var(--accent)" : "2px solid transparent",
+            transition: "all 0.15s",
+          }}>{t.label}</button>
         ))}
       </div>
 
-      {/* ═══════ OVERVIEW ═══════ */}
-      {tab === "overview" && (
-        <div>
-          <div style={s.statGrid}>
-            <div style={s.card}>
-              <div style={{ ...s.statValue, color: "#10b981" }}>${totalBalance.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
-              <div style={s.statLabel}>Total Balance</div>
-            </div>
-            <div style={s.card}>
-              <div style={{ ...s.statValue, color: "#3b82f6" }}>${totalIncome.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
-              <div style={s.statLabel}>Income (30d)</div>
-            </div>
-            <div style={s.card}>
-              <div style={{ ...s.statValue, color: "#ef4444" }}>${totalSpending.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
-              <div style={s.statLabel}>Spending (30d)</div>
-            </div>
-            <div style={s.card}>
-              <div style={{ ...s.statValue, color: netCashflow >= 0 ? "#10b981" : "#ef4444" }}>
-                {netCashflow >= 0 ? "+" : ""}${netCashflow.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-              </div>
-              <div style={s.statLabel}>Net Cash Flow</div>
-            </div>
-          </div>
+      {/* Content */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 32px 32px" }}>
 
-          {/* Accounts */}
-          {accounts.length > 0 ? (
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>Linked Accounts ({accounts.length})</div>
-              <div style={{ display: "grid", gap: 8 }}>
-                {accounts.map(a => (
-                  <div key={a.id} style={{ ...s.card, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>{a.name}</div>
-                      <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{a.institution} • {a.type} • ****{a.mask}</div>
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: "#10b981" }}>${(a.balanceCurrent || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
-                      {a.balanceLimit && <div style={{ fontSize: 10, color: "var(--text-tertiary)" }}>Limit: ${a.balanceLimit.toLocaleString()}</div>}
-                    </div>
+        {/* Loading */}
+        {loading && (
+          <div style={{ textAlign: "center", padding: 30, color: "var(--text-tertiary)" }}>
+            <div style={{ width: 24, height: 24, border: "3px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 8px" }} />
+            Syncing financial data...
+          </div>
+        )}
+
+        {/* ═══════ OVERVIEW ═══════ */}
+        {tab === "overview" && !loading && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Stat cards */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+              {[
+                { label: "Total Balance", value: totalBalance, color: "#10b981" },
+                { label: "Income (30d)", value: totalIncome, color: "#3b82f6" },
+                { label: "Spending (30d)", value: totalSpending, color: "#ef4444" },
+                { label: "Net Cash Flow", value: netCashflow, color: netCashflow >= 0 ? "#10b981" : "#ef4444", prefix: netCashflow >= 0 ? "+" : "" },
+              ].map(stat => (
+                <div key={stat.label} className="card">
+                  <div style={{ fontSize: 24, fontWeight: 700, color: stat.color, marginBottom: 2 }}>
+                    {stat.prefix || ""}${Math.abs(stat.value).toLocaleString("en-US", { minimumFractionDigits: 2 })}
                   </div>
-                ))}
-              </div>
+                  <div style={{ fontSize: 11, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{stat.label}</div>
+                </div>
+              ))}
             </div>
-          ) : (
-            <div style={{ ...s.card, textAlign: "center", padding: "40px 20px" }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>🏦</div>
-              <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>Connect Your Accounts</div>
-              <div style={{ color: "var(--text-tertiary)", marginBottom: 16, fontSize: 13 }}>
-                Securely link your bank accounts via Plaid to see real-time balances and transactions.
-              </div>
-              <button onClick={connectBank} style={s.btn}>🔗 Connect via Plaid</button>
-            </div>
-          )}
 
-          {/* Spending breakdown */}
-          {Object.keys(categorySpending).length > 0 && (
-            <div style={s.card}>
-              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Spending by Category</div>
-              <div style={{ display: "grid", gap: 8 }}>
-                {Object.entries(categorySpending).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([cat, amount]) => {
-                  const meta = getCatMeta(cat);
-                  const budget = budgets.find(b => b.category === cat);
-                  const pct = budget ? (amount / budget.limit) * 100 : 30;
-                  return (
-                    <div key={cat} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ width: 130, fontSize: 12, color: "var(--text-secondary)", display: "flex", gap: 4, alignItems: "center" }}>
-                        <span>{meta.icon}</span> {meta.label}
+            {/* Accounts */}
+            {accounts.length > 0 ? (
+              <div>
+                <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 10, color: "var(--text-secondary)" }}>Linked Accounts ({accounts.length})</h3>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {accounts.map(a => (
+                    <div key={a.id} className="card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{a.name}</div>
+                        <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{a.institution} • {a.type} • ****{a.mask}</div>
                       </div>
-                      <div style={{ flex: 1, background: "var(--bg-secondary)", borderRadius: 3, height: 6 }}>
-                        <div style={s.budgetBar(pct)} />
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: "#10b981" }}>${(a.balanceCurrent || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                        {a.balanceLimit && <div style={{ fontSize: 10, color: "var(--text-tertiary)" }}>Limit: ${a.balanceLimit.toLocaleString()}</div>}
                       </div>
-                      <div style={{ width: 70, textAlign: "right", fontSize: 13, fontWeight: 600 }}>${amount.toFixed(0)}</div>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ═══════ TRANSACTIONS ═══════ */}
-      {tab === "transactions" && (
-        <div>
-          <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-            <input placeholder="Search transactions..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={{ ...s.input, width: 220, flex: "unset" }} />
-            <select value={filterCat} onChange={e => setFilterCat(e.target.value)} style={{ ...s.input, width: 160, flex: "unset" }}>
-              <option value="all">All Categories</option>
-              {uniqueCategories.map(c => <option key={c} value={c}>{getCatMeta(c).icon} {getCatMeta(c).label}</option>)}
-            </select>
-            <button onClick={connectBank} style={s.btnGhost}>🔗 Link Account</button>
-            <span style={{ fontSize: 12, color: "var(--text-tertiary)", alignSelf: "center" }}>{filteredTxns.length} transactions</span>
-          </div>
-
-          <div style={{ ...s.card, padding: 0, overflow: "hidden" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  {["Date", "Description", "Category", "Bank", "Amount"].map(h => (
-                    <th key={h} style={{ textAlign: h === "Amount" ? "right" : "left", padding: "10px 12px", fontSize: 10, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px", borderBottom: "1px solid var(--border)" }}>{h}</th>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredTxns.slice(0, 200).map(t => {
-                  const meta = getCatMeta(t.category);
-                  return (
-                    <tr key={t.id} style={{ transition: "background 0.15s" }} onMouseEnter={e => e.currentTarget.style.background = "var(--bg-secondary)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                      <td style={{ padding: "10px 12px", fontSize: 12, color: "var(--text-tertiary)", whiteSpace: "nowrap" }}>{t.date}</td>
-                      <td style={{ padding: "10px 12px", fontSize: 13 }}>
-                        <div style={{ fontWeight: 500 }}>{t.merchant || t.name}</div>
-                        {t.pending && <span style={{ fontSize: 9, background: "rgba(251,191,36,0.2)", color: "#fbbf24", padding: "1px 5px", borderRadius: 3 }}>Pending</span>}
-                      </td>
-                      <td style={{ padding: "10px 12px", fontSize: 12 }}>
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 3, background: `${meta.color}15`, color: meta.color, padding: "2px 6px", borderRadius: 4, fontSize: 11 }}>
-                          {meta.icon} {meta.label}
-                        </span>
-                      </td>
-                      <td style={{ padding: "10px 12px", fontSize: 11, color: "var(--text-tertiary)" }}>{t.institution}</td>
-                      <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, fontSize: 13, color: t.amount < 0 ? "#10b981" : "#ef4444" }}>
-                        {t.amount < 0 ? "+" : "-"}${Math.abs(t.amount).toFixed(2)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            {filteredTxns.length === 0 && (
-              <div style={{ textAlign: "center", padding: 40, color: "var(--text-tertiary)" }}>
-                {accounts.length === 0 ? "Connect a bank account to see transactions" : "No matching transactions"}
+                </div>
+              </div>
+            ) : (
+              <div className="card" style={{ textAlign: "center", padding: "40px 20px" }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>🏦</div>
+                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>Connect Your Accounts</div>
+                <div style={{ color: "var(--text-tertiary)", marginBottom: 16, fontSize: 13 }}>
+                  Securely link your bank accounts via Plaid to see real-time balances and transactions.
+                </div>
+                <button className="btn btn-primary" onClick={connectBank}>🔗 Connect via Plaid</button>
+              </div>
+            )}
+
+            {/* Spending breakdown */}
+            {Object.keys(categorySpending).length > 0 && (
+              <div className="card">
+                <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Spending by Category</h3>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {Object.entries(categorySpending).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([cat, amount]) => {
+                    const meta = getCatMeta(cat);
+                    const budget = budgets.find(b => b.category === cat);
+                    const pct = budget ? (amount / budget.limit) * 100 : 30;
+                    return (
+                      <div key={cat} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ width: 130, fontSize: 12, color: "var(--text-secondary)", display: "flex", gap: 4, alignItems: "center" }}>
+                          <span>{meta.icon}</span> {meta.label}
+                        </div>
+                        <div style={{ flex: 1, background: "var(--bg-secondary)", borderRadius: 3, height: 6 }}>
+                          <div style={budgetBar(pct)} />
+                        </div>
+                        <div style={{ width: 70, textAlign: "right", fontSize: 13, fontWeight: 600 }}>${amount.toFixed(0)}</div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ═══════ BUDGET ═══════ */}
-      {tab === "budget" && (
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Monthly Budget Tracker</div>
-          <div style={{ display: "grid", gap: 10 }}>
+        {/* ═══════ TRANSACTIONS ═══════ */}
+        {tab === "transactions" && !loading && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <input placeholder="Search transactions..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+                className="input" style={{ width: 220 }} />
+              <select value={filterCat} onChange={e => setFilterCat(e.target.value)} className="input" style={{ width: 160 }}>
+                <option value="all">All Categories</option>
+                {uniqueCategories.map(c => <option key={c} value={c}>{getCatMeta(c).icon} {getCatMeta(c).label}</option>)}
+              </select>
+              <button className="btn btn-sm" onClick={connectBank}>🔗 Link Account</button>
+              <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{filteredTxns.length} transactions</span>
+            </div>
+
+            <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    {["Date", "Description", "Category", "Bank", "Amount"].map(h => (
+                      <th key={h} style={{ textAlign: h === "Amount" ? "right" : "left", padding: "10px 12px", fontSize: 10, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px", borderBottom: "1px solid var(--border)" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTxns.slice(0, 200).map(t => {
+                    const meta = getCatMeta(t.category);
+                    return (
+                      <tr key={t.id} style={{ transition: "background 0.15s" }} onMouseEnter={e => e.currentTarget.style.background = "var(--bg-secondary)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                        <td style={{ padding: "10px 12px", fontSize: 12, color: "var(--text-tertiary)", whiteSpace: "nowrap" }}>{t.date}</td>
+                        <td style={{ padding: "10px 12px", fontSize: 13 }}>
+                          <div style={{ fontWeight: 500 }}>{t.merchant || t.name}</div>
+                          {t.pending && <span className="badge" style={{ background: "rgba(251,191,36,0.2)", color: "#fbbf24" }}>Pending</span>}
+                        </td>
+                        <td style={{ padding: "10px 12px", fontSize: 12 }}>
+                          <span className="badge" style={{ background: `${meta.color}15`, color: meta.color }}>{meta.icon} {meta.label}</span>
+                        </td>
+                        <td style={{ padding: "10px 12px", fontSize: 11, color: "var(--text-tertiary)" }}>{t.institution}</td>
+                        <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, fontSize: 13, color: t.amount < 0 ? "#10b981" : "#ef4444" }}>
+                          {t.amount < 0 ? "+" : "-"}${Math.abs(t.amount).toFixed(2)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {filteredTxns.length === 0 && (
+                <div style={{ textAlign: "center", padding: 40, color: "var(--text-tertiary)" }}>
+                  {accounts.length === 0 ? "Connect a bank account to see transactions" : "No matching transactions"}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ═══════ BUDGET ═══════ */}
+        {tab === "budget" && !loading && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--text-secondary)" }}>Monthly Budget Tracker</h3>
             {budgets.map(b => {
               const meta = getCatMeta(b.category);
               const spent = categorySpending[b.category] || 0;
               const pct = b.limit > 0 ? (spent / b.limit) * 100 : 0;
               const remaining = b.limit - spent;
               return (
-                <div key={b.category} style={s.card}>
+                <div key={b.category} className="card">
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                       <span>{meta.icon}</span>
@@ -503,7 +496,7 @@ export default function FinanceModule() {
                     </div>
                   </div>
                   <div style={{ background: "var(--bg-secondary)", borderRadius: 3, height: 6, marginBottom: 4 }}>
-                    <div style={s.budgetBar(pct)} />
+                    <div style={budgetBar(pct)} />
                   </div>
                   <div style={{ fontSize: 11, color: remaining >= 0 ? "#10b981" : "#ef4444" }}>
                     {remaining >= 0 ? `$${remaining.toFixed(0)} remaining` : `$${Math.abs(remaining).toFixed(0)} over budget`}
@@ -512,248 +505,212 @@ export default function FinanceModule() {
               );
             })}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ═══════ AI ADVISOR ═══════ */}
-      {tab === "advisor" && (
-        <div>
-          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-            <input value={aiQuestion} onChange={e => setAiQuestion(e.target.value)} placeholder="Ask about your finances..." style={{ ...s.input, flex: 1 }}
-              onKeyDown={e => e.key === "Enter" && askAdvisor(aiQuestion)} />
-            <button onClick={() => askAdvisor(aiQuestion)} disabled={aiLoading} style={s.btn}>
-              {aiLoading ? "⏳" : "🤖 Ask"}
-            </button>
-          </div>
-          <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
-            {["Summarize my spending", "How can I save more?", "Am I on budget?", "What bills are coming up?"].map(q => (
-              <button key={q} onClick={() => { setAiQuestion(q); askAdvisor(q); }} style={s.btnGhost}>{q}</button>
-            ))}
-          </div>
-          {aiInsight && (
-            <div style={{ ...s.card, background: "var(--accent-dim)", borderColor: "var(--accent)", lineHeight: 1.7, fontSize: 13, whiteSpace: "pre-wrap" }}>
-              {aiInsight}
+        {/* ═══════ AI ADVISOR ═══════ */}
+        {tab === "advisor" && !loading && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input value={aiQuestion} onChange={e => setAiQuestion(e.target.value)} placeholder="Ask about your finances..."
+                className="input" style={{ flex: 1 }}
+                onKeyDown={e => e.key === "Enter" && askAdvisor(aiQuestion)} />
+              <button className="btn btn-primary" onClick={() => askAdvisor(aiQuestion)} disabled={aiLoading}>
+                {aiLoading ? "⏳" : "🤖 Ask"}
+              </button>
             </div>
-          )}
-          {!aiInsight && !aiLoading && (
-            <div style={{ textAlign: "center", padding: 40, color: "var(--text-tertiary)" }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>🤖</div>
-              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>AI Financial Advisor</div>
-              <div>Ask questions about your spending, budgeting, and financial health.</div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ═══════ API COSTS ═══════ */}
-      {tab === "costs" && (
-        <div>
-          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-            {["7d", "30d", "90d", "all"].map(p => (
-              <button key={p} onClick={() => setCostPeriod(p)} style={costPeriod === p ? s.btn : s.btnGhost}>{p === "all" ? "All Time" : p}</button>
-            ))}
-          </div>
-
-          {apiUsage ? (
-            <div>
-              {/* Summary cards */}
-              <div style={s.statGrid}>
-                <div style={s.card}>
-                  <div style={{ ...s.statValue, color: "var(--accent)" }}>${apiUsage.totalCost.toFixed(4)}</div>
-                  <div style={s.statLabel}>Total Cost ({costPeriod})</div>
-                </div>
-                <div style={s.card}>
-                  <div style={{ ...s.statValue, color: "#3b82f6" }}>{apiUsage.totalCalls.toLocaleString()}</div>
-                  <div style={s.statLabel}>API Calls</div>
-                </div>
-                <div style={s.card}>
-                  <div style={{ ...s.statValue, color: "#f59e0b" }}>{apiUsage.totalTokens.toLocaleString()}</div>
-                  <div style={s.statLabel}>Total Tokens</div>
-                </div>
-              </div>
-
-              {/* By Service */}
-              <div style={s.card}>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Cost by Service</div>
-                <div style={{ display: "grid", gap: 8 }}>
-                  {Object.entries(apiUsage.byService).sort((a, b) => b[1].cost - a[1].cost).map(([svc, data]) => {
-                    const maxCost = Math.max(...Object.values(apiUsage.byService).map(s => s.cost), 0.001);
-                    const pct = (data.cost / maxCost) * 100;
-                    return (
-                      <div key={svc} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <div style={{ width: 100, fontSize: 12, fontWeight: 600, textTransform: "capitalize" }}>{svc}</div>
-                        <div style={{ flex: 1, background: "var(--bg-secondary)", borderRadius: 3, height: 6 }}>
-                          <div style={{ width: `${pct}%`, height: 6, borderRadius: 3, background: "var(--accent)", transition: "width 0.5s" }} />
-                        </div>
-                        <div style={{ width: 70, textAlign: "right", fontSize: 12 }}>${data.cost.toFixed(4)}</div>
-                        <div style={{ width: 50, textAlign: "right", fontSize: 11, color: "var(--text-tertiary)" }}>{data.calls}x</div>
-                      </div>
-                    );
-                  })}
-                </div>
-                {Object.keys(apiUsage.byService).length === 0 && (
-                  <div style={{ textAlign: "center", padding: 20, color: "var(--text-tertiary)", fontSize: 13 }}>No API calls recorded yet</div>
-                )}
-              </div>
-
-              {/* Cost Reference */}
-              <div style={{ ...s.card, marginTop: 12 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>Cost Reference</div>
-                <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
-                  {[
-                    ["Gemini (2.5 Flash)", "$0.15/1M input, $0.60/1M output", "Free tier: 15 RPM"],
-                    ["Plaid", "$0 sandbox / $0.30 per link (prod)", "Transactions included"],
-                    ["Alpaca", "Free (paper & live)", "Commission-free trades"],
-                    ["YouTube Data API", "Free", "10,000 quota units/day"],
-                    ["Google Calendar", "Free", "Included with OAuth"],
-                    ["Firebase/Firestore", "Free tier", "1GB storage, 50K reads/day"],
-                  ].map(([name, cost, note]) => (
-                    <div key={name} style={{ display: "flex", gap: 10, padding: "4px 0", borderBottom: "1px solid var(--border)" }}>
-                      <div style={{ width: 150, fontWeight: 500 }}>{name}</div>
-                      <div style={{ flex: 1, color: "var(--text-secondary)" }}>{cost}</div>
-                      <div style={{ color: "var(--text-tertiary)", fontSize: 11 }}>{note}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div style={{ textAlign: "center", padding: 40, color: "var(--text-tertiary)" }}>Loading cost data...</div>
-          )}
-        </div>
-      )}
-
-      {/* ═══════ SETTINGS ═══════ */}
-      {tab === "settings" && (
-        <div style={{ display: "grid", gap: 16 }}>
-          {/* Environment Toggle */}
-          <div style={s.card}>
-            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Plaid Environment</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
-              {PLAID_ENVS.map(e => (
-                <div key={e.id}
-                  onClick={() => switchPlaidEnv(e.id)}
-                  style={{
-                    ...s.card, cursor: "pointer", textAlign: "center", transition: "all 0.2s",
-                    border: plaidEnv === e.id ? `2px solid ${e.color}` : "1px solid var(--border)",
-                    background: plaidEnv === e.id ? `${e.color}10` : "var(--bg-elevated)",
-                  }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: plaidEnv === e.id ? e.color : "var(--text-primary)" }}>{e.label}</div>
-                  <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>{e.desc}</div>
-                  {plaidEnv === e.id && <div style={{ fontSize: 11, marginTop: 6, color: e.color, fontWeight: 600 }}>● Active</div>}
-                </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {["Summarize my spending", "How can I save more?", "Am I on budget?", "What bills are coming up?"].map(q => (
+                <button key={q} className="btn btn-sm" onClick={() => { setAiQuestion(q); askAdvisor(q); }}>{q}</button>
               ))}
             </div>
-          </div>
-
-          {/* API Credentials */}
-          <div style={s.card}>
-            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Plaid API Credentials</div>
-            <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 14 }}>
-              Keys are stored securely in Firestore and never exposed to the browser after saving.
-            </div>
-
-            <div style={{ display: "grid", gap: 12 }}>
-              {/* Client ID */}
-              <div>
-                <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "block" }}>Client ID</label>
-                <input
-                  value={configForm.clientId}
-                  onChange={e => setConfigForm(f => ({ ...f, clientId: e.target.value }))}
-                  placeholder="Enter Plaid Client ID..."
-                  style={s.input}
-                />
+            {aiInsight && (
+              <div className="card" style={{ lineHeight: 1.7, fontSize: 13, whiteSpace: "pre-wrap", borderColor: "var(--accent)" }}>
+                {aiInsight}
               </div>
-
-              {/* Sandbox Secret */}
-              <div>
-                <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
-                  Sandbox Secret
-                  {plaidConfig.hasSandboxSecret && <span style={{ fontSize: 9, background: "rgba(16,185,129,0.15)", color: "#10b981", padding: "1px 5px", borderRadius: 3 }}>Saved</span>}
-                </label>
-                <input
-                  type="password"
-                  value={configForm.secretSandbox}
-                  onChange={e => setConfigForm(f => ({ ...f, secretSandbox: e.target.value }))}
-                  placeholder={plaidConfig.hasSandboxSecret ? "••••••••• (saved — enter new to replace)" : "Enter Sandbox Secret..."}
-                  style={s.input}
-                />
-              </div>
-
-              {/* Development Secret */}
-              <div>
-                <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
-                  Development Secret
-                  {plaidConfig.hasDevelopmentSecret && <span style={{ fontSize: 9, background: "rgba(59,130,246,0.15)", color: "#3b82f6", padding: "1px 5px", borderRadius: 3 }}>Saved</span>}
-                </label>
-                <input
-                  type="password"
-                  value={configForm.secretDevelopment}
-                  onChange={e => setConfigForm(f => ({ ...f, secretDevelopment: e.target.value }))}
-                  placeholder={plaidConfig.hasDevelopmentSecret ? "••••••••• (saved — enter new to replace)" : "Enter Development Secret..."}
-                  style={s.input}
-                />
-              </div>
-
-              {/* Production Secret */}
-              <div>
-                <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
-                  Production Secret
-                  {plaidConfig.hasProductionSecret && <span style={{ fontSize: 9, background: "rgba(239,68,68,0.15)", color: "#ef4444", padding: "1px 5px", borderRadius: 3 }}>Saved</span>}
-                </label>
-                <input
-                  type="password"
-                  value={configForm.secretProduction}
-                  onChange={e => setConfigForm(f => ({ ...f, secretProduction: e.target.value }))}
-                  placeholder={plaidConfig.hasProductionSecret ? "••••••••• (saved — enter new to replace)" : "Enter Production Secret..."}
-                  style={s.input}
-                />
-              </div>
-            </div>
-
-            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 14 }}>
-              <button onClick={savePlaidConfig} disabled={configSaving} style={s.btn}>
-                {configSaving ? "Saving..." : "💾 Save Configuration"}
-              </button>
-              {configMsg && <span style={{ fontSize: 12 }}>{configMsg}</span>}
-            </div>
-
-            {plaidConfig.updatedAt && (
-              <div style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 8 }}>
-                Last updated: {new Date(plaidConfig.updatedAt).toLocaleString()}
+            )}
+            {!aiInsight && !aiLoading && (
+              <div className="card" style={{ textAlign: "center", padding: 40 }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>🤖</div>
+                <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>AI Financial Advisor</div>
+                <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Ask questions about your spending, budgeting, and financial health.</div>
               </div>
             )}
           </div>
+        )}
 
-          {/* Status Summary */}
-          <div style={s.card}>
-            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>Connection Status</div>
-            <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
-              {[
-                ["Client ID", plaidConfig.clientId ? "✅ Configured" : "❌ Not set"],
-                ["Sandbox Secret", plaidConfig.hasSandboxSecret ? "✅ Saved" : "⚠️ Not set"],
-                ["Development Secret", plaidConfig.hasDevelopmentSecret ? "✅ Saved" : "⚠️ Not set"],
-                ["Production Secret", plaidConfig.hasProductionSecret ? "✅ Saved" : "⚠️ Not set"],
-                ["Active Environment", plaidEnv.toUpperCase()],
-                ["Linked Accounts", `${accounts.length} account${accounts.length !== 1 ? "s" : ""}`],
-              ].map(([label, value]) => (
-                <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid var(--border)" }}>
-                  <span style={{ color: "var(--text-secondary)" }}>{label}</span>
-                  <span style={{ fontWeight: 500 }}>{value}</span>
-                </div>
+        {/* ═══════ API COSTS ═══════ */}
+        {tab === "costs" && !loading && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              {["7d", "30d", "90d", "all"].map(p => (
+                <button key={p} onClick={() => setCostPeriod(p)}
+                  className={costPeriod === p ? "btn btn-primary btn-sm" : "btn btn-sm"}>
+                  {p === "all" ? "All Time" : p}
+                </button>
               ))}
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* Loading overlay */}
-      {loading && (
-        <div style={{ textAlign: "center", padding: 30, color: "var(--text-tertiary)" }}>
-          <div style={{ width: 24, height: 24, border: "3px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 8px" }} />
-          Syncing financial data...
-        </div>
-      )}
+            {apiUsage ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                {/* Summary cards */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+                  <div className="card">
+                    <div style={{ fontSize: 24, fontWeight: 700, color: "var(--accent)", marginBottom: 2 }}>${apiUsage.totalCost.toFixed(4)}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Total Cost ({costPeriod})</div>
+                  </div>
+                  <div className="card">
+                    <div style={{ fontSize: 24, fontWeight: 700, color: "#3b82f6", marginBottom: 2 }}>{apiUsage.totalCalls.toLocaleString()}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px" }}>API Calls</div>
+                  </div>
+                  <div className="card">
+                    <div style={{ fontSize: 24, fontWeight: 700, color: "#f59e0b", marginBottom: 2 }}>{apiUsage.totalTokens.toLocaleString()}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Total Tokens</div>
+                  </div>
+                </div>
+
+                {/* By Service */}
+                <div className="card">
+                  <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Cost by Service</h3>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {Object.entries(apiUsage.byService).sort((a, b) => b[1].cost - a[1].cost).map(([svc, data]) => {
+                      const maxCost = Math.max(...Object.values(apiUsage.byService).map(s => s.cost), 0.001);
+                      const pct = (data.cost / maxCost) * 100;
+                      return (
+                        <div key={svc} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <div style={{ width: 100, fontSize: 12, fontWeight: 600, textTransform: "capitalize" }}>{svc}</div>
+                          <div style={{ flex: 1, background: "var(--bg-secondary)", borderRadius: 3, height: 6 }}>
+                            <div style={{ width: `${pct}%`, height: 6, borderRadius: 3, background: "var(--accent)", transition: "width 0.5s" }} />
+                          </div>
+                          <div style={{ width: 70, textAlign: "right", fontSize: 12 }}>${data.cost.toFixed(4)}</div>
+                          <div style={{ width: 50, textAlign: "right", fontSize: 11, color: "var(--text-tertiary)" }}>{data.calls}x</div>
+                        </div>
+                      );
+                    })}
+                    {Object.keys(apiUsage.byService).length === 0 && (
+                      <div style={{ textAlign: "center", padding: 20, color: "var(--text-tertiary)", fontSize: 13 }}>No API calls recorded yet</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Cost Reference */}
+                <div className="card">
+                  <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>Cost Reference</h3>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+                    {[
+                      ["Gemini (2.5 Flash)", "$0.15/1M input, $0.60/1M output", "Free tier: 15 RPM"],
+                      ["Plaid", "$0 sandbox / $0.30 per link (prod)", "Transactions included"],
+                      ["Alpaca", "Free (paper & live)", "Commission-free trades"],
+                      ["YouTube Data API", "Free", "10,000 quota units/day"],
+                      ["Google Calendar", "Free", "Included with OAuth"],
+                      ["Firebase/Firestore", "Free tier", "1GB storage, 50K reads/day"],
+                    ].map(([name, cost, note]) => (
+                      <div key={name} style={{ display: "flex", gap: 10, padding: "4px 0", borderBottom: "1px solid var(--border)" }}>
+                        <div style={{ width: 150, fontWeight: 500 }}>{name}</div>
+                        <div style={{ flex: 1, color: "var(--text-secondary)" }}>{cost}</div>
+                        <div style={{ color: "var(--text-tertiary)", fontSize: 11 }}>{note}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div style={{ textAlign: "center", padding: 40, color: "var(--text-tertiary)" }}>Loading cost data...</div>
+            )}
+          </div>
+        )}
+
+        {/* ═══════ SETTINGS ═══════ */}
+        {tab === "settings" && !loading && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Environment Toggle */}
+            <div>
+              <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 10, color: "var(--text-secondary)" }}>Plaid Environment</h3>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
+                {PLAID_ENVS.map(e => (
+                  <div key={e.id} className="card" onClick={() => switchPlaidEnv(e.id)}
+                    style={{
+                      cursor: "pointer", textAlign: "center", transition: "all 0.2s",
+                      border: plaidEnv === e.id ? `2px solid ${e.color}` : undefined,
+                      background: plaidEnv === e.id ? `${e.color}10` : undefined,
+                    }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: plaidEnv === e.id ? e.color : "var(--text-primary)" }}>{e.label}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>{e.desc}</div>
+                    {plaidEnv === e.id && <div style={{ fontSize: 11, marginTop: 6, color: e.color, fontWeight: 600 }}>● Active</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* API Credentials */}
+            <div className="card">
+              <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Plaid API Credentials</h3>
+              <p style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 14 }}>
+                Keys are stored securely in Firestore and never exposed to the browser after saving.
+              </p>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {/* Client ID */}
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "block" }}>Client ID</label>
+                  <input value={configForm.clientId} onChange={e => setConfigForm(f => ({ ...f, clientId: e.target.value }))}
+                    placeholder="Enter Plaid Client ID..." className="input" />
+                </div>
+
+                {/* Secrets */}
+                {[
+                  { key: "secretSandbox", label: "Sandbox Secret", saved: plaidConfig.hasSandboxSecret, color: "#10b981" },
+                  { key: "secretDevelopment", label: "Development Secret", saved: plaidConfig.hasDevelopmentSecret, color: "#3b82f6" },
+                  { key: "secretProduction", label: "Production Secret", saved: plaidConfig.hasProductionSecret, color: "#ef4444" },
+                ].map(({ key, label, saved, color }) => (
+                  <div key={key}>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                      {label}
+                      {saved && <span className="badge" style={{ background: `${color}20`, color }}>Saved</span>}
+                    </label>
+                    <input type="password" value={configForm[key]}
+                      onChange={e => setConfigForm(f => ({ ...f, [key]: e.target.value }))}
+                      placeholder={saved ? "••••••••• (saved — enter new to replace)" : `Enter ${label}...`}
+                      className="input" />
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 14 }}>
+                <button className="btn btn-primary" onClick={savePlaidConfig} disabled={configSaving}>
+                  {configSaving ? "Saving..." : "💾 Save Configuration"}
+                </button>
+                {configMsg && <span style={{ fontSize: 12 }}>{configMsg}</span>}
+              </div>
+
+              {plaidConfig.updatedAt && (
+                <div style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 8 }}>
+                  Last updated: {new Date(plaidConfig.updatedAt).toLocaleString()}
+                </div>
+              )}
+            </div>
+
+            {/* Connection Status */}
+            <div className="card">
+              <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>Connection Status</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
+                {[
+                  ["Client ID", plaidConfig.clientId ? "✅ Configured" : "❌ Not set"],
+                  ["Sandbox Secret", plaidConfig.hasSandboxSecret ? "✅ Saved" : "⚠️ Not set"],
+                  ["Development Secret", plaidConfig.hasDevelopmentSecret ? "✅ Saved" : "⚠️ Not set"],
+                  ["Production Secret", plaidConfig.hasProductionSecret ? "✅ Saved" : "⚠️ Not set"],
+                  ["Active Environment", plaidEnv.toUpperCase()],
+                  ["Linked Accounts", `${accounts.length} account${accounts.length !== 1 ? "s" : ""}`],
+                ].map(([label, value]) => (
+                  <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid var(--border)" }}>
+                    <span style={{ color: "var(--text-secondary)" }}>{label}</span>
+                    <span style={{ fontWeight: 500 }}>{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
