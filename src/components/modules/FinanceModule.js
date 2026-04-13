@@ -7,6 +7,9 @@ import SplitAgreements from "@/components/finance/SplitAgreements";
 import RecurringTab from "@/components/finance/RecurringTab";
 import NetWorthTab from "@/components/finance/NetWorthTab";
 import CategoriesEditor from "@/components/finance/CategoriesEditor";
+import CryptoTab from "@/components/finance/CryptoTab";
+import InvestmentsTab from "@/components/finance/InvestmentsTab";
+import LiabilitiesTab from "@/components/finance/LiabilitiesTab";
 
 // ─── Tab Config ──────────────────────────────────────────────────────────────
 const TABS = [
@@ -16,6 +19,9 @@ const TABS = [
   { id: "recurring", label: "📅 Recurring" },
   { id: "budget", label: "📋 Budget" },
   { id: "networth", label: "📈 Net Worth" },
+  { id: "crypto", label: "₿ Crypto" },
+  { id: "investments", label: "💼 Investments" },
+  { id: "liabilities", label: "🏦 Liabilities" },
   { id: "advisor", label: "🤖 AI Advisor" },
   { id: "costs", label: "⚡ API Costs" },
   { id: "settings", label: "⚙️ Settings" },
@@ -527,6 +533,21 @@ export default function FinanceModule() {
         {/* ═══════ NET WORTH ═══════ */}
         {tab === "networth" && !loading && (
           <NetWorthTab user={user} accounts={accounts} profileId={activeProfile} />
+        )}
+
+        {/* ═══════ CRYPTO ═══════ */}
+        {tab === "crypto" && !loading && (
+          <CryptoTab user={user} profileId={activeProfile} />
+        )}
+
+        {/* ═══════ INVESTMENTS ═══════ */}
+        {tab === "investments" && !loading && (
+          <InvestmentsTab user={user} profileId={activeProfile} />
+        )}
+
+        {/* ═══════ LIABILITIES ═══════ */}
+        {tab === "liabilities" && !loading && (
+          <LiabilitiesTab user={user} profileId={activeProfile} />
         )}
 
         {/* ═══════ AI ADVISOR ═══════ */}
