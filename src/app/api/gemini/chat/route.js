@@ -3,7 +3,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 // ─── Gemini Chat API Route ───────────────────────────────────────────────────
 // General-purpose Gemini endpoint with retry logic and model fallback.
 
-const FALLBACK_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"];
+const FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"];
 const MAX_RETRIES = 2;
 
 export async function POST(req) {
