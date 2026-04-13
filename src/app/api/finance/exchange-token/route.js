@@ -8,14 +8,15 @@ export async function POST(req) {
       return Response.json({ error: "publicToken and userId required" }, { status: 400 });
     }
 
-    const plaidClient = getPlaidClient();
+    const { client: plaidClient, env } = await getPlaidClient(userId);
     const response = await plaidClient.itemPublicTokenExchange({ public_token: publicToken });
     const { access_token, item_id } = response.data;
 
-    // Store under user's finance profile (personal or partner)
-    const pId = profileId || "personal";
     const adminDb = getAdminDb();
     if (!adminDb) return Response.json({ error: "Admin DB not configured" }, { status: 500 });
+
+    // Store under user's finance profile (personal or partner)
+    const pId = profileId || "personal";
     await adminDb.collection("users").doc(userId)
       .collection("finance_profiles").doc(pId)
       .collection("plaid_items").doc(item_id).set({
@@ -26,14 +27,14 @@ export async function POST(req) {
         institutionName: institutionName || "Unknown Bank",
         linkedAt: new Date().toISOString(),
         status: "active",
-        env: process.env.PLAID_ENV || "sandbox",
+        env,
       });
 
     return Response.json({
       success: true,
       itemId: item_id,
       institution: institutionName,
-      env: process.env.PLAID_ENV || "sandbox",
+      env,
     });
   } catch (error) {
     console.error("[PLAID] exchange-token error:", error.message);

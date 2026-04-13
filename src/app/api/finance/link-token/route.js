@@ -6,7 +6,7 @@ export async function POST(req) {
     const { userId } = await req.json();
     if (!userId) return Response.json({ error: "userId is required" }, { status: 400 });
 
-    const plaidClient = getPlaidClient();
+    const { client: plaidClient, env } = await getPlaidClient(userId);
 
     const response = await plaidClient.linkTokenCreate({
       user: { client_user_id: userId },
@@ -18,7 +18,7 @@ export async function POST(req) {
 
     return Response.json({
       link_token: response.data.link_token,
-      env: process.env.PLAID_ENV || "sandbox",
+      env,
     });
   } catch (error) {
     console.error("[PLAID] link-token error:", error.message);

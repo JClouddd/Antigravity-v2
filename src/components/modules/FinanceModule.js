@@ -11,6 +11,13 @@ const TABS = [
   { id: "budget", label: "Budget", icon: "📋" },
   { id: "advisor", label: "AI Advisor", icon: "🤖" },
   { id: "costs", label: "API Costs", icon: "⚡" },
+  { id: "settings", label: "Settings", icon: "⚙️" },
+];
+
+const PLAID_ENVS = [
+  { id: "sandbox", label: "Sandbox", desc: "Free test data", color: "#10b981" },
+  { id: "development", label: "Development", desc: "Real banks, limited users", color: "#3b82f6" },
+  { id: "production", label: "Production", desc: "Live with real money", color: "#ef4444" },
 ];
 
 // ─── Plaid category map (standard personal_finance_category) ─────────────────
@@ -107,6 +114,11 @@ export default function FinanceModule() {
   const [plaidEnv, setPlaidEnv] = useState("sandbox");
   const [showAddProfile, setShowAddProfile] = useState(false);
   const [newProfileName, setNewProfileName] = useState("");
+  // Settings state
+  const [plaidConfig, setPlaidConfig] = useState({ configured: false, clientId: "", environment: "sandbox" });
+  const [configForm, setConfigForm] = useState({ clientId: "", secretSandbox: "", secretDevelopment: "", secretProduction: "" });
+  const [configSaving, setConfigSaving] = useState(false);
+  const [configMsg, setConfigMsg] = useState("");
 
   // Fetch financial data from Plaid
   const fetchData = useCallback(async () => {
@@ -138,6 +150,59 @@ export default function FinanceModule() {
   }, [user, costPeriod]);
 
   useEffect(() => { if (tab === "costs") fetchCosts(); }, [tab, fetchCosts]);
+
+  // Fetch Plaid config status
+  const fetchPlaidConfig = useCallback(async () => {
+    if (!user?.uid) return;
+    try {
+      const res = await fetch(`/api/finance/config?userId=${user.uid}`);
+      const data = await res.json();
+      setPlaidConfig(data);
+      setPlaidEnv(data.environment || "sandbox");
+      setConfigForm(prev => ({ ...prev, clientId: data.clientId || "" }));
+    } catch (e) { console.error("Config fetch error:", e); }
+  }, [user]);
+
+  useEffect(() => { fetchPlaidConfig(); }, [fetchPlaidConfig]);
+
+  // Save Plaid config
+  const savePlaidConfig = async () => {
+    if (!user?.uid) return;
+    setConfigSaving(true);
+    setConfigMsg("");
+    try {
+      const res = await fetch("/api/finance/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.uid, ...configForm, environment: plaidEnv }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setConfigMsg("✅ Configuration saved");
+        setConfigForm(prev => ({ ...prev, secretSandbox: "", secretDevelopment: "", secretProduction: "" }));
+        fetchPlaidConfig();
+      } else {
+        setConfigMsg("❌ " + (data.error || "Save failed"));
+      }
+    } catch (e) {
+      setConfigMsg("❌ Error: " + e.message);
+    }
+    setConfigSaving(false);
+  };
+
+  // Switch Plaid environment
+  const switchPlaidEnv = async (env) => {
+    setPlaidEnv(env);
+    if (!user?.uid) return;
+    try {
+      await fetch("/api/finance/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.uid, environment: env }),
+      });
+      fetchPlaidConfig();
+    } catch (e) { console.error("Env switch error:", e); }
+  };
 
   // Connect bank via Plaid Link
   const connectBank = async () => {
@@ -555,6 +620,130 @@ export default function FinanceModule() {
           ) : (
             <div style={{ textAlign: "center", padding: 40, color: "var(--text-tertiary)" }}>Loading cost data...</div>
           )}
+        </div>
+      )}
+
+      {/* ═══════ SETTINGS ═══════ */}
+      {tab === "settings" && (
+        <div style={{ display: "grid", gap: 16 }}>
+          {/* Environment Toggle */}
+          <div style={s.card}>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Plaid Environment</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
+              {PLAID_ENVS.map(e => (
+                <div key={e.id}
+                  onClick={() => switchPlaidEnv(e.id)}
+                  style={{
+                    ...s.card, cursor: "pointer", textAlign: "center", transition: "all 0.2s",
+                    border: plaidEnv === e.id ? `2px solid ${e.color}` : "1px solid var(--border)",
+                    background: plaidEnv === e.id ? `${e.color}10` : "var(--bg-elevated)",
+                  }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: plaidEnv === e.id ? e.color : "var(--text-primary)" }}>{e.label}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>{e.desc}</div>
+                  {plaidEnv === e.id && <div style={{ fontSize: 11, marginTop: 6, color: e.color, fontWeight: 600 }}>● Active</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* API Credentials */}
+          <div style={s.card}>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Plaid API Credentials</div>
+            <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 14 }}>
+              Keys are stored securely in Firestore and never exposed to the browser after saving.
+            </div>
+
+            <div style={{ display: "grid", gap: 12 }}>
+              {/* Client ID */}
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "block" }}>Client ID</label>
+                <input
+                  value={configForm.clientId}
+                  onChange={e => setConfigForm(f => ({ ...f, clientId: e.target.value }))}
+                  placeholder="Enter Plaid Client ID..."
+                  style={s.input}
+                />
+              </div>
+
+              {/* Sandbox Secret */}
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                  Sandbox Secret
+                  {plaidConfig.hasSandboxSecret && <span style={{ fontSize: 9, background: "rgba(16,185,129,0.15)", color: "#10b981", padding: "1px 5px", borderRadius: 3 }}>Saved</span>}
+                </label>
+                <input
+                  type="password"
+                  value={configForm.secretSandbox}
+                  onChange={e => setConfigForm(f => ({ ...f, secretSandbox: e.target.value }))}
+                  placeholder={plaidConfig.hasSandboxSecret ? "••••••••• (saved — enter new to replace)" : "Enter Sandbox Secret..."}
+                  style={s.input}
+                />
+              </div>
+
+              {/* Development Secret */}
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                  Development Secret
+                  {plaidConfig.hasDevelopmentSecret && <span style={{ fontSize: 9, background: "rgba(59,130,246,0.15)", color: "#3b82f6", padding: "1px 5px", borderRadius: 3 }}>Saved</span>}
+                </label>
+                <input
+                  type="password"
+                  value={configForm.secretDevelopment}
+                  onChange={e => setConfigForm(f => ({ ...f, secretDevelopment: e.target.value }))}
+                  placeholder={plaidConfig.hasDevelopmentSecret ? "••••••••• (saved — enter new to replace)" : "Enter Development Secret..."}
+                  style={s.input}
+                />
+              </div>
+
+              {/* Production Secret */}
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                  Production Secret
+                  {plaidConfig.hasProductionSecret && <span style={{ fontSize: 9, background: "rgba(239,68,68,0.15)", color: "#ef4444", padding: "1px 5px", borderRadius: 3 }}>Saved</span>}
+                </label>
+                <input
+                  type="password"
+                  value={configForm.secretProduction}
+                  onChange={e => setConfigForm(f => ({ ...f, secretProduction: e.target.value }))}
+                  placeholder={plaidConfig.hasProductionSecret ? "••••••••• (saved — enter new to replace)" : "Enter Production Secret..."}
+                  style={s.input}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 14 }}>
+              <button onClick={savePlaidConfig} disabled={configSaving} style={s.btn}>
+                {configSaving ? "Saving..." : "💾 Save Configuration"}
+              </button>
+              {configMsg && <span style={{ fontSize: 12 }}>{configMsg}</span>}
+            </div>
+
+            {plaidConfig.updatedAt && (
+              <div style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 8 }}>
+                Last updated: {new Date(plaidConfig.updatedAt).toLocaleString()}
+              </div>
+            )}
+          </div>
+
+          {/* Status Summary */}
+          <div style={s.card}>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>Connection Status</div>
+            <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
+              {[
+                ["Client ID", plaidConfig.clientId ? "✅ Configured" : "❌ Not set"],
+                ["Sandbox Secret", plaidConfig.hasSandboxSecret ? "✅ Saved" : "⚠️ Not set"],
+                ["Development Secret", plaidConfig.hasDevelopmentSecret ? "✅ Saved" : "⚠️ Not set"],
+                ["Production Secret", plaidConfig.hasProductionSecret ? "✅ Saved" : "⚠️ Not set"],
+                ["Active Environment", plaidEnv.toUpperCase()],
+                ["Linked Accounts", `${accounts.length} account${accounts.length !== 1 ? "s" : ""}`],
+              ].map(([label, value]) => (
+                <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid var(--border)" }}>
+                  <span style={{ color: "var(--text-secondary)" }}>{label}</span>
+                  <span style={{ fontWeight: 500 }}>{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 

@@ -19,7 +19,7 @@ export async function POST(req) {
       return Response.json({ transactions: [], accounts: [], message: "No linked accounts" });
     }
 
-    const plaidClient = getPlaidClient();
+    const { client: plaidClient, env } = await getPlaidClient(userId);
 
     const end = endDate || new Date().toISOString().split("T")[0];
     const start = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
@@ -52,22 +52,21 @@ export async function POST(req) {
           pending: t.pending,
           institution: institutionName,
           accountId: t.account_id,
-          paymentChannel: t.payment_channel,  // "online" | "in_store" | "other"
+          paymentChannel: t.payment_channel,
           iso_currency: t.iso_currency_code || "USD",
         }));
 
         allTransactions.push(...txns);
 
-        // Map accounts
         const accts = txResponse.data.accounts.map(a => ({
           id: a.account_id,
           name: a.name,
           officialName: a.official_name,
-          type: a.type,         // "depository" | "credit" | "loan" | "investment"
-          subtype: a.subtype,   // "checking" | "savings" | "credit card" etc.
+          type: a.type,
+          subtype: a.subtype,
           balanceCurrent: a.balances.current,
           balanceAvailable: a.balances.available,
-          balanceLimit: a.balances.limit,  // Credit limit
+          balanceLimit: a.balances.limit,
           currency: a.balances.iso_currency_code || "USD",
           institution: institutionName,
           mask: a.mask,
@@ -85,7 +84,7 @@ export async function POST(req) {
       transactions: allTransactions,
       accounts: allAccounts,
       period: { start, end },
-      env: process.env.PLAID_ENV || "sandbox",
+      env,
       profileId: pId,
     });
   } catch (error) {
