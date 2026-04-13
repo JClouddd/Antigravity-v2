@@ -10,6 +10,7 @@ import CategoriesEditor from "@/components/finance/CategoriesEditor";
 import CryptoTab from "@/components/finance/CryptoTab";
 import InvestmentsTab from "@/components/finance/InvestmentsTab";
 import LiabilitiesTab from "@/components/finance/LiabilitiesTab";
+import AIAdvisorTab from "@/components/finance/AIAdvisorTab";
 
 // ─── Tab Config ──────────────────────────────────────────────────────────────
 const TABS = [
@@ -552,33 +553,17 @@ export default function FinanceModule() {
 
         {/* ═══════ AI ADVISOR ═══════ */}
         {tab === "advisor" && !loading && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input value={aiQuestion} onChange={e => setAiQuestion(e.target.value)} placeholder="Ask about your finances..."
-                className="input" style={{ flex: 1 }}
-                onKeyDown={e => e.key === "Enter" && askAdvisor(aiQuestion)} />
-              <button className="btn btn-primary" onClick={() => askAdvisor(aiQuestion)} disabled={aiLoading}>
-                {aiLoading ? "⏳" : "🤖 Ask"}
-              </button>
-            </div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {["Summarize my spending", "How can I save more?", "Am I on budget?", "What bills are coming up?"].map(q => (
-                <button key={q} className="btn btn-sm" onClick={() => { setAiQuestion(q); askAdvisor(q); }}>{q}</button>
-              ))}
-            </div>
-            {aiInsight && (
-              <div className="card" style={{ lineHeight: 1.7, fontSize: 13, whiteSpace: "pre-wrap", borderColor: "var(--accent)" }}>
-                {aiInsight}
-              </div>
-            )}
-            {!aiInsight && !aiLoading && (
-              <div className="card" style={{ textAlign: "center", padding: 40 }}>
-                <div style={{ fontSize: 40, marginBottom: 12 }}>🤖</div>
-                <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>AI Financial Advisor</div>
-                <div style={{ color: "var(--text-tertiary)", fontSize: 13 }}>Ask questions about your spending, budgeting, and financial health.</div>
-              </div>
-            )}
-          </div>
+          <AIAdvisorTab
+            user={user}
+            accounts={accounts}
+            transactions={transactions}
+            totalBalance={totalBalance}
+            totalIncome={totalIncome}
+            totalSpending={totalSpending}
+            budgets={budgets}
+            categorySpending={categorySpending}
+            profileId={activeProfile}
+          />
         )}
 
         {/* ═══════ API COSTS ═══════ */}
