@@ -16,6 +16,7 @@ const DEFAULT_MODULES = [
   { id: "life", label: "Life", icon: "life", enabled: true },
   { id: "time", label: "Time", icon: "clock", enabled: true },
   { id: "planning", label: "Planning", icon: "planning", enabled: true },
+  { id: "finance", label: "Finance", icon: "finance", enabled: true },
   { id: "search", label: "Search", icon: "search", enabled: true },
   { id: "settings", label: "Settings", icon: "settings", enabled: true },
 ];
