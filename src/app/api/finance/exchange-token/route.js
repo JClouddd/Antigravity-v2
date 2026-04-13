@@ -1,4 +1,4 @@
-import { adminDb } from "@/lib/firebaseAdmin";
+import { getAdminDb } from "@/lib/firebaseAdmin";
 import { getPlaidClient } from "@/lib/plaidClient";
 
 export async function POST(req) {
@@ -14,6 +14,8 @@ export async function POST(req) {
 
     // Store under user's finance profile (personal or partner)
     const pId = profileId || "personal";
+    const adminDb = getAdminDb();
+    if (!adminDb) return Response.json({ error: "Admin DB not configured" }, { status: 500 });
     await adminDb.collection("users").doc(userId)
       .collection("finance_profiles").doc(pId)
       .collection("plaid_items").doc(item_id).set({

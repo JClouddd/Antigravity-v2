@@ -1,4 +1,4 @@
-import { adminDb } from "@/lib/firebaseAdmin";
+import { getAdminDb } from "@/lib/firebaseAdmin";
 import { getPlaidClient } from "@/lib/plaidClient";
 
 export async function POST(req) {
@@ -7,6 +7,8 @@ export async function POST(req) {
     if (!userId) return Response.json({ error: "userId required" }, { status: 400 });
 
     const pId = profileId || "personal";
+    const adminDb = getAdminDb();
+    if (!adminDb) return Response.json({ error: "Admin DB not configured" }, { status: 500 });
 
     // Get all active Plaid items for this profile
     const itemsSnap = await adminDb.collection("users").doc(userId)
