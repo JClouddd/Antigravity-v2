@@ -11,6 +11,7 @@ import CryptoTab from "@/components/finance/CryptoTab";
 import InvestmentsTab from "@/components/finance/InvestmentsTab";
 import LiabilitiesTab from "@/components/finance/LiabilitiesTab";
 import AIAdvisorTab from "@/components/finance/AIAdvisorTab";
+import APICostsTab from "@/components/finance/APICostsTab";
 
 // ─── Tab Config ──────────────────────────────────────────────────────────────
 const TABS = [
@@ -568,83 +569,7 @@ export default function FinanceModule() {
 
         {/* ═══════ API COSTS ═══════ */}
         {tab === "costs" && !loading && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ display: "flex", gap: 8 }}>
-              {["7d", "30d", "90d", "all"].map(p => (
-                <button key={p} onClick={() => setCostPeriod(p)}
-                  className={costPeriod === p ? "btn btn-primary btn-sm" : "btn btn-sm"}>
-                  {p === "all" ? "All Time" : p}
-                </button>
-              ))}
-            </div>
-
-            {apiUsage ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                {/* Summary cards */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-                  <div className="card">
-                    <div style={{ fontSize: 24, fontWeight: 700, color: "var(--accent)", marginBottom: 2 }}>${apiUsage.totalCost.toFixed(4)}</div>
-                    <div style={{ fontSize: 11, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Total Cost ({costPeriod})</div>
-                  </div>
-                  <div className="card">
-                    <div style={{ fontSize: 24, fontWeight: 700, color: "#3b82f6", marginBottom: 2 }}>{apiUsage.totalCalls.toLocaleString()}</div>
-                    <div style={{ fontSize: 11, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px" }}>API Calls</div>
-                  </div>
-                  <div className="card">
-                    <div style={{ fontSize: 24, fontWeight: 700, color: "#f59e0b", marginBottom: 2 }}>{apiUsage.totalTokens.toLocaleString()}</div>
-                    <div style={{ fontSize: 11, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Total Tokens</div>
-                  </div>
-                </div>
-
-                {/* By Service */}
-                <div className="card">
-                  <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Cost by Service</h3>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {Object.entries(apiUsage.byService).sort((a, b) => b[1].cost - a[1].cost).map(([svc, data]) => {
-                      const maxCost = Math.max(...Object.values(apiUsage.byService).map(s => s.cost), 0.001);
-                      const pct = (data.cost / maxCost) * 100;
-                      return (
-                        <div key={svc} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <div style={{ width: 100, fontSize: 12, fontWeight: 600, textTransform: "capitalize" }}>{svc}</div>
-                          <div style={{ flex: 1, background: "var(--bg-secondary)", borderRadius: 3, height: 6 }}>
-                            <div style={{ width: `${pct}%`, height: 6, borderRadius: 3, background: "var(--accent)", transition: "width 0.5s" }} />
-                          </div>
-                          <div style={{ width: 70, textAlign: "right", fontSize: 12 }}>${data.cost.toFixed(4)}</div>
-                          <div style={{ width: 50, textAlign: "right", fontSize: 11, color: "var(--text-tertiary)" }}>{data.calls}x</div>
-                        </div>
-                      );
-                    })}
-                    {Object.keys(apiUsage.byService).length === 0 && (
-                      <div style={{ textAlign: "center", padding: 20, color: "var(--text-tertiary)", fontSize: 13 }}>No API calls recorded yet</div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Cost Reference */}
-                <div className="card">
-                  <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>Cost Reference</h3>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
-                    {[
-                      ["Gemini (2.5 Flash)", "$0.15/1M input, $0.60/1M output", "Free tier: 15 RPM"],
-                      ["Plaid", "$0 sandbox / $0.30 per link (prod)", "Transactions included"],
-                      ["Alpaca", "Free (paper & live)", "Commission-free trades"],
-                      ["YouTube Data API", "Free", "10,000 quota units/day"],
-                      ["Google Calendar", "Free", "Included with OAuth"],
-                      ["Firebase/Firestore", "Free tier", "1GB storage, 50K reads/day"],
-                    ].map(([name, cost, note]) => (
-                      <div key={name} style={{ display: "flex", gap: 10, padding: "4px 0", borderBottom: "1px solid var(--border)" }}>
-                        <div style={{ width: 150, fontWeight: 500 }}>{name}</div>
-                        <div style={{ flex: 1, color: "var(--text-secondary)" }}>{cost}</div>
-                        <div style={{ color: "var(--text-tertiary)", fontSize: 11 }}>{note}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div style={{ textAlign: "center", padding: 40, color: "var(--text-tertiary)" }}>Loading cost data...</div>
-            )}
-          </div>
+          <APICostsTab user={user} />
         )}
 
         {/* ═══════ SETTINGS ═══════ */}

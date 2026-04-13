@@ -255,13 +255,17 @@ ${ctx.ingestedKnowledge.map(k => `- "${k.title}": ${k.summary || ""}`).join("\n"
       };
       setConversation(prev => [...prev, assistantMsg]);
 
-      if (uid) {
+      if (uid && data.usage) {
         await logApiCall(uid, {
           service: "gemini",
           action: "finance_advisor",
-          model: data.model || "gemini-2.0-flash",
-          tokens: data.usage?.totalTokens || 0,
-          estimatedCost: ((data.usage?.totalTokens || 0) / 1000000) * 0.15,
+          model: data.model || "gemini-2.5-flash",
+          inputTokens: data.usage.promptTokens || 0,
+          outputTokens: data.usage.completionTokens || 0,
+          estimatedCost: (
+            ((data.usage.promptTokens || 0) / 1000000) * 0.15 +
+            ((data.usage.completionTokens || 0) / 1000000) * 0.60
+          ),
         });
       }
     } catch (err) {
