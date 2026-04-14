@@ -15,6 +15,7 @@ import LifeModule from "@/components/modules/LifeModule";
 import TimeModule from "@/components/modules/TimeModule";
 import PlanningModule from "@/components/modules/PlanningModule";
 import FinanceModule from "@/components/modules/FinanceModule";
+import YouTubeModule from "@/components/modules/YouTubeModule";
 
 // All available icons for sidebar modules
 const ICONS = {
@@ -58,6 +59,12 @@ const ICONS = {
       <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
     </svg>
   ),
+  youtube: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22.54 6.42a2.78 2.78 0 00-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 00-1.94 2A29 29 0 001 11.75a29 29 0 00.46 5.33A2.78 2.78 0 003.4 19.1c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 001.94-2 29 29 0 00.46-5.25 29 29 0 00-.46-5.43z"/>
+      <polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"/>
+    </svg>
+  ),
 };
 
 // Map module IDs to their page components
@@ -69,6 +76,7 @@ const PAGE_COMPONENTS = {
   planning: PlanningModule,
   settings: SettingsPage,
   finance: FinanceModule,
+  youtube: YouTubeModule,
 };
 
 export default function AppShell() {
@@ -130,7 +138,7 @@ export default function AppShell() {
 
   const handleCommandNavigate = (viewId) => {
     // Check if it's a module-level nav or a project sub-view
-    const moduleIds = ["dashboard", "projects", "life", "time", "planning", "settings"];
+    const moduleIds = ["dashboard", "projects", "life", "time", "planning", "finance", "youtube", "settings"];
     if (moduleIds.includes(viewId)) {
       setActivePage(viewId);
     } else {

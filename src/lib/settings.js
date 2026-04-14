@@ -17,6 +17,7 @@ const DEFAULT_MODULES = [
   { id: "time", label: "Time", icon: "clock", enabled: true },
   { id: "planning", label: "Planning", icon: "planning", enabled: true },
   { id: "finance", label: "Finance", icon: "finance", enabled: true },
+  { id: "youtube", label: "YouTube", icon: "youtube", enabled: true },
   { id: "search", label: "Search", icon: "search", enabled: true },
   { id: "settings", label: "Settings", icon: "settings", enabled: true },
 ];
