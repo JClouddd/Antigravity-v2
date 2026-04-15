@@ -140,6 +140,13 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
   const [deepDiveResult, setDeepDiveResult] = useState(null);
   const [deepDiveLoading, setDeepDiveLoading] = useState(false);
 
+  // Decision Fork
+  const [forkDecision, setForkDecision] = useState("");
+  const [forkContext, setForkContext] = useState("");
+  const [forkBranches, setForkBranches] = useState(4);
+  const [forkResult, setForkResult] = useState(null);
+  const [forkLoading, setForkLoading] = useState(false);
+
   /* ─── API Calls ─── */
   const fetchDeepAnalytics = async () => {
     if (!googleAccessToken) return;
@@ -404,6 +411,22 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
     setDeepDiveLoading(false);
   };
 
+  const runDecisionFork = async () => {
+    if (!forkDecision.trim()) return;
+    setForkLoading(true);
+    setForkResult(null);
+    try {
+      const res = await fetch("/api/youtube/decision-fork", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision: forkDecision, branches: forkBranches, context: forkContext }),
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      setForkResult(await res.json());
+    } catch (e) { setForkResult({ error: e.message }); }
+    setForkLoading(false);
+  };
+
   /* ─── Premium Tools Grid ─── */
   const tools = [
     { id: "analytics", icon: "📈", label: "Deep Analytics", desc: "Watch time, retention, traffic sources, demographics", color: "#3b82f6" },
@@ -417,6 +440,7 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
     { id: "chapters", icon: "📑", label: "Chapter Generator", desc: "Auto-generate chapters from scripts", color: "#a855f7" },
     { id: "batch", icon: "⚡", label: "Batch Editor", desc: "Update 50 videos at once", color: "#f97316" },
     { id: "niche", icon: "🧭", label: "Niche Lab", desc: "Discover profitable niches with AI analysis", color: "#22d3ee" },
+    { id: "fork", icon: "🔮", label: "Decision Fork", desc: "Simulate parallel strategies and compare", color: "#e879f9" },
   ];
 
   // Channel Selector bar (shown inside panels)
@@ -1352,6 +1376,107 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
                 {nicheResults?.error && <div style={{ color: "#f87171", fontSize: "12px" }}>❌ {nicheResults.error}</div>}
               </>
             )}
+          </div>
+        )}
+
+        {/* ─── Decision Fork ─── */}
+        {activePanel === "fork" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <div style={card}>
+              <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "8px" }}>🔮 Decision Fork Engine</h3>
+              <p style={{ fontSize: "12px", color: "var(--text-tertiary)", marginBottom: "16px" }}>
+                Describe a decision you&apos;re facing. The AI simulates multiple parallel paths and compares their outcomes over time.
+              </p>
+              <input value={forkDecision} onChange={e => setForkDecision(e.target.value)}
+                placeholder="e.g. Should I start a faceless tech channel or a talking-head finance channel?"
+                style={{ ...inputStyle, marginBottom: "8px" }} />
+              <textarea value={forkContext} onChange={e => setForkContext(e.target.value)}
+                placeholder="Additional context (optional): experience, time available, current situation..."
+                rows={2} style={{ ...inputStyle, marginBottom: "8px", resize: "vertical" }} />
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <select value={forkBranches} onChange={e => setForkBranches(Number(e.target.value))} style={{ ...inputStyle, maxWidth: "150px" }}>
+                  <option value={2}>2 branches</option>
+                  <option value={3}>3 branches</option>
+                  <option value={4}>4 branches</option>
+                  <option value={5}>5 branches</option>
+                </select>
+                <button style={{ ...btnPrimary, flex: 1 }} onClick={runDecisionFork} disabled={forkLoading || !forkDecision.trim()}>
+                  {forkLoading ? "⏳ Simulating paths..." : "🔮 Simulate"}
+                </button>
+              </div>
+            </div>
+
+            {forkResult && !forkResult.error && forkResult.branches && (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(forkResult.branches.length, 3)}, 1fr)`, gap: "12px" }}>
+                  {forkResult.branches.map((b, i) => (
+                    <div key={i} style={{ ...card, borderTop: `3px solid ${b.color || "#8b5cf6"}` }}>
+                      <h4 style={{ fontSize: "13px", fontWeight: "700", marginBottom: "8px", color: b.color || "#8b5cf6" }}>{b.name}</h4>
+                      <p style={{ fontSize: "10px", color: "var(--text-secondary)", marginBottom: "10px" }}>{b.description}</p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginBottom: "10px" }}>
+                        {(b.timeline || []).map((t, ti) => (
+                          <div key={ti} style={{ display: "flex", gap: "6px", alignItems: "baseline" }}>
+                            <span style={{ fontSize: "9px", fontWeight: "700", color: b.color || "#8b5cf6", minWidth: "28px" }}>M{t.month}</span>
+                            <span style={{ fontSize: "9px", color: "var(--text-secondary)", flex: 1 }}>{t.milestone}</span>
+                            <span style={{ fontSize: "9px", color: "#10b981" }}>{t.subscribers ? `${(t.subscribers/1000).toFixed(1)}K` : ""}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {b.projectedOutcome && (
+                        <div style={{ padding: "8px", borderRadius: "8px", background: "var(--bg-tertiary, rgba(255,255,255,0.02))", marginBottom: "8px" }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px" }}>
+                            <div style={{ fontSize: "9px" }}>👥 <strong>{b.projectedOutcome.subscribers}</strong></div>
+                            <div style={{ fontSize: "9px" }}>💰 <strong>{b.projectedOutcome.monthlyRevenue}</strong>/mo</div>
+                            <div style={{ fontSize: "9px" }}>⏰ {b.projectedOutcome.timePerWeek}</div>
+                            <div style={{ fontSize: "9px" }}>📈 ROI: {b.projectedOutcome.roi}</div>
+                          </div>
+                        </div>
+                      )}
+                      <div style={{ display: "flex", gap: "3px", flexWrap: "wrap" }}>
+                        <span style={{ padding: "1px 6px", borderRadius: "4px", fontSize: "8px", background: b.scalability === "high" ? "rgba(16,185,129,0.1)" : "rgba(245,158,11,0.1)", color: b.scalability === "high" ? "#10b981" : "#f59e0b" }}>{b.scalability} scale</span>
+                        <span style={{ padding: "1px 6px", borderRadius: "4px", fontSize: "8px", background: b.burnoutRisk === "low" ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)", color: b.burnoutRisk === "low" ? "#10b981" : "#ef4444" }}>{b.burnoutRisk} burnout</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {forkResult.comparison && (
+                  <div style={{ ...card, borderTop: "2px solid #e879f9" }}>
+                    <h4 style={{ fontSize: "13px", fontWeight: "600", marginBottom: "8px" }}>⚖️ Comparison</h4>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px", marginBottom: "10px" }}>
+                      {[
+                        { label: "🚀 Fastest Growth", value: forkResult.comparison.fastestGrowth },
+                        { label: "💰 Highest Revenue", value: forkResult.comparison.highestRevenue },
+                        { label: "🛡️ Lowest Risk", value: forkResult.comparison.lowestRisk },
+                        { label: "📈 Best ROI", value: forkResult.comparison.bestROI },
+                      ].map((c, i) => (
+                        <div key={i} style={{ textAlign: "center", padding: "8px", borderRadius: "8px", background: "var(--bg-tertiary, rgba(255,255,255,0.02))" }}>
+                          <div style={{ fontSize: "9px", color: "var(--text-tertiary)" }}>{c.label}</div>
+                          <div style={{ fontSize: "11px", fontWeight: "600", marginTop: "2px" }}>{c.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ padding: "10px", borderRadius: "8px", background: "rgba(232,121,249,0.06)", border: "1px solid rgba(232,121,249,0.15)" }}>
+                      <div style={{ fontSize: "11px", fontWeight: "600", marginBottom: "2px" }}>🎯 Recommendation</div>
+                      <div style={{ fontSize: "11px", color: "var(--text-secondary)" }}>{forkResult.comparison.recommendation}</div>
+                    </div>
+                  </div>
+                )}
+
+                {forkResult.hybridStrategy && (
+                  <div style={{ ...card, borderTop: "2px solid #10b981" }}>
+                    <h4 style={{ fontSize: "12px", fontWeight: "600", marginBottom: "4px" }}>🧬 Hybrid Strategy</h4>
+                    <p style={{ fontSize: "11px", color: "var(--text-secondary)", marginBottom: "6px" }}>{forkResult.hybridStrategy.description}</p>
+                    <ol style={{ margin: 0, paddingLeft: "16px" }}>
+                      {(forkResult.hybridStrategy.steps || []).map((s, i) => (
+                        <li key={i} style={{ fontSize: "10px", color: "var(--text-secondary)", marginBottom: "2px" }}>{s}</li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+              </>
+            )}
+            {forkResult?.error && <div style={{ color: "#f87171", fontSize: "12px" }}>❌ {forkResult.error}</div>}
           </div>
         )}
       </div>

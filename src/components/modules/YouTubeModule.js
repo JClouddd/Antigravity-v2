@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import YouTubeAdvancedTab from "./YouTubeAdvancedTab";
+import YouTubeBuildWizard from "./YouTubeBuildWizard";
 
 /* ─── Helpers ─── */
 const fmtNumber = (n) => {
@@ -22,10 +23,11 @@ const fmtDate = (d) => {
 
 /* ─── Tabs ─── */
 const TABS = [
+  { id: "build", label: "Build", icon: "🏗️" },
   { id: "analytics", label: "Analytics", icon: "📊" },
   { id: "channels", label: "Channels", icon: "📺" },
-  { id: "creation", label: "Creation Tools", icon: "🎨" },
-  { id: "publish", label: "Upload & Publish", icon: "🚀" },
+  { id: "creation", label: "Creation", icon: "🎨" },
+  { id: "publish", label: "Upload", icon: "🚀" },
   { id: "pro", label: "Pro Tools", icon: "⚡" },
 ];
 
@@ -89,7 +91,7 @@ const inputStyle = {
    ═══════════════════════════════════════════════════════════ */
 export default function YouTubeModule() {
   const { user, googleAccessToken } = useAuth();
-  const [activeTab, setActiveTab] = useState("channels");
+  const [activeTab, setActiveTab] = useState("build");
   const [channels, setChannels] = useState([]);
   const [activeChannel, setActiveChannel] = useState(null);
   const [channelBoardTab, setChannelBoardTab] = useState("videos");
@@ -2056,7 +2058,7 @@ export default function YouTubeModule() {
         </div>
       </div>
 
-      {/* Tab Content */}
+      {activeTab === "build" && <YouTubeBuildWizard googleAccessToken={googleAccessToken} />}
       {activeTab === "analytics" && renderAnalyticsTab()}
       {activeTab === "channels" && renderChannelsTab()}
       {activeTab === "creation" && renderCreationTab()}
