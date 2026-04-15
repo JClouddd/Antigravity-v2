@@ -85,6 +85,24 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
   const [autoOrganizeLoading, setAutoOrganizeLoading] = useState(false);
   const [autoOrganizeResult, setAutoOrganizeResult] = useState(null);
 
+  // Sentiment
+  const [sentimentVideoId, setSentimentVideoId] = useState("");
+  const [sentimentResult, setSentimentResult] = useState(null);
+  const [sentimentLoading, setSentimentLoading] = useState(false);
+
+  // Chapters
+  const [chapterContent, setChapterContent] = useState("");
+  const [chapterLength, setChapterLength] = useState("10:00");
+  const [chapterResult, setChapterResult] = useState(null);
+  const [chapterLoading, setChapterLoading] = useState(false);
+
+  // Batch Edit
+  const [batchVideoIds, setBatchVideoIds] = useState("");
+  const [batchAction, setBatchAction] = useState("appendDescription");
+  const [batchValue, setBatchValue] = useState("");
+  const [batchResult, setBatchResult] = useState(null);
+  const [batchLoading, setBatchLoading] = useState(false);
+
   /* ─── API Calls ─── */
   const fetchDeepAnalytics = async () => {
     if (!googleAccessToken) return;
@@ -258,6 +276,63 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
     } catch (e) { console.error("Remove failed:", e); }
   };
 
+  const analyzeSentiment = async () => {
+    if (!sentimentVideoId.trim() || !googleAccessToken) return;
+    setSentimentLoading(true);
+    setSentimentResult(null);
+    try {
+      const res = await fetch("/api/youtube/sentiment", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${googleAccessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ videoId: sentimentVideoId.trim() }),
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      setSentimentResult(await res.json());
+    } catch (e) { setSentimentResult({ error: e.message }); }
+    setSentimentLoading(false);
+  };
+
+  const generateChapters = async () => {
+    if (!chapterContent.trim()) return;
+    setChapterLoading(true);
+    setChapterResult(null);
+    try {
+      const res = await fetch("/api/youtube/chapters", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: chapterContent, videoLength: chapterLength }),
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      setChapterResult(await res.json());
+    } catch (e) { setChapterResult({ error: e.message }); }
+    setChapterLoading(false);
+  };
+
+  const runBatchEdit = async () => {
+    if (!batchVideoIds.trim() || !batchValue.trim() || !googleAccessToken) return;
+    setBatchLoading(true);
+    setBatchResult(null);
+    try {
+      const ids = batchVideoIds.split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+      const updates = {};
+      if (batchAction === "appendDescription") updates.appendDescription = batchValue;
+      else if (batchAction === "prependDescription") updates.prependDescription = batchValue;
+      else if (batchAction === "addTags") updates.addTags = batchValue.split(",").map(s => s.trim());
+      else if (batchAction === "removeTags") updates.removeTags = batchValue.split(",").map(s => s.trim());
+      else if (batchAction === "title") updates.title = batchValue;
+      else if (batchAction === "description") updates.description = batchValue;
+
+      const res = await fetch("/api/youtube/batch-edit", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${googleAccessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ videoIds: ids, updates }),
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      setBatchResult(await res.json());
+    } catch (e) { setBatchResult({ error: e.message }); }
+    setBatchLoading(false);
+  };
+
   /* ─── Premium Tools Grid ─── */
   const tools = [
     { id: "analytics", icon: "📈", label: "Deep Analytics", desc: "Watch time, retention, traffic sources, demographics", color: "#3b82f6" },
@@ -267,6 +342,9 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
     { id: "playlists", icon: "📋", label: "Playlist Manager", desc: "Create, organize, and auto-sort playlists", color: "#8b5cf6" },
     { id: "community", icon: "📝", label: "Community Posts", desc: "Generate text, poll, and quiz drafts", color: "#ec4899" },
     { id: "repurpose", icon: "♻️", label: "Content Repurposer", desc: "Transform content across platforms", color: "#06b6d4" },
+    { id: "sentiment", icon: "🎭", label: "Sentiment Analysis", desc: "Bulk-analyze comment mood and themes", color: "#14b8a6" },
+    { id: "chapters", icon: "📑", label: "Chapter Generator", desc: "Auto-generate chapters from scripts", color: "#a855f7" },
+    { id: "batch", icon: "⚡", label: "Batch Editor", desc: "Update 50 videos at once", color: "#f97316" },
   ];
 
   if (activePanel) {
@@ -713,6 +791,236 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
               </div>
             )}
             {communityPosts?.error && <div style={{ color: "#f87171", fontSize: "12px" }}>❌ {communityPosts.error}</div>}
+          </div>
+        )}
+
+        {/* ─── Sentiment Analysis ─── */}
+        {activePanel === "sentiment" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <div style={card}>
+              <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "8px" }}>🎭 Comment Sentiment Dashboard</h3>
+              <p style={{ fontSize: "12px", color: "var(--text-tertiary)", marginBottom: "12px" }}>
+                AI analyzes up to 100 comments — mood, themes, praise, complaints, questions, and toxic content.
+              </p>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <input value={sentimentVideoId} onChange={e => setSentimentVideoId(e.target.value)}
+                  placeholder="Enter Video ID..." style={inputStyle} />
+                <button style={btnPrimary} onClick={analyzeSentiment} disabled={sentimentLoading || !sentimentVideoId.trim()}>
+                  {sentimentLoading ? "⏳ Analyzing..." : "🎭 Analyze"}
+                </button>
+              </div>
+            </div>
+
+            {sentimentResult && !sentimentResult.error && (
+              <>
+                {/* Overall Score */}
+                <div style={{ ...card, textAlign: "center", borderTop: `3px solid ${sentimentResult.overall?.score >= 70 ? "#10b981" : sentimentResult.overall?.score >= 40 ? "#f59e0b" : "#ef4444"}` }}>
+                  <div style={{ fontSize: "48px", fontWeight: "800", color: sentimentResult.overall?.score >= 70 ? "#10b981" : sentimentResult.overall?.score >= 40 ? "#f59e0b" : "#ef4444" }}>
+                    {sentimentResult.overall?.score}
+                  </div>
+                  <div style={{ fontSize: "12px", color: "var(--text-tertiary)", textTransform: "capitalize" }}>
+                    {sentimentResult.overall?.sentiment} · {sentimentResult.commentsAnalyzed} comments
+                  </div>
+                  <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "4px" }}>{sentimentResult.overall?.summary}</div>
+                </div>
+
+                {/* Breakdown */}
+                {sentimentResult.breakdown && (
+                  <div style={{ ...card, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px" }}>
+                    {[
+                      { label: "Positive", val: sentimentResult.breakdown.positive, color: "#10b981" },
+                      { label: "Neutral", val: sentimentResult.breakdown.neutral, color: "#6b7280" },
+                      { label: "Negative", val: sentimentResult.breakdown.negative, color: "#ef4444" },
+                      { label: "Questions", val: sentimentResult.breakdown.questions, color: "#3b82f6" },
+                    ].map((s, i) => (
+                      <div key={i} style={{ textAlign: "center" }}>
+                        <div style={{ fontSize: "20px", fontWeight: "700", color: s.color }}>{s.val}%</div>
+                        <div style={{ fontSize: "10px", color: "var(--text-tertiary)" }}>{s.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Insights Grid */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  {sentimentResult.topPraise?.length > 0 && (
+                    <div style={card}>
+                      <h4 style={{ fontSize: "12px", fontWeight: "600", marginBottom: "6px", color: "#10b981" }}>👍 Top Praise</h4>
+                      <ul style={{ margin: 0, paddingLeft: "14px", fontSize: "11px", color: "var(--text-secondary)" }}>
+                        {sentimentResult.topPraise.map((p, i) => <li key={i} style={{ marginBottom: "3px" }}>{p}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {sentimentResult.topComplaints?.length > 0 && (
+                    <div style={card}>
+                      <h4 style={{ fontSize: "12px", fontWeight: "600", marginBottom: "6px", color: "#ef4444" }}>👎 Top Complaints</h4>
+                      <ul style={{ margin: 0, paddingLeft: "14px", fontSize: "11px", color: "var(--text-secondary)" }}>
+                        {sentimentResult.topComplaints.map((c, i) => <li key={i} style={{ marginBottom: "3px" }}>{c}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {sentimentResult.topQuestions?.length > 0 && (
+                    <div style={card}>
+                      <h4 style={{ fontSize: "12px", fontWeight: "600", marginBottom: "6px", color: "#3b82f6" }}>❓ Top Questions</h4>
+                      <ul style={{ margin: 0, paddingLeft: "14px", fontSize: "11px", color: "var(--text-secondary)" }}>
+                        {sentimentResult.topQuestions.map((q, i) => <li key={i} style={{ marginBottom: "3px" }}>{q}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {sentimentResult.actionItems?.length > 0 && (
+                    <div style={card}>
+                      <h4 style={{ fontSize: "12px", fontWeight: "600", marginBottom: "6px", color: "#f59e0b" }}>🎯 Action Items</h4>
+                      <ul style={{ margin: 0, paddingLeft: "14px", fontSize: "11px", color: "var(--text-secondary)" }}>
+                        {sentimentResult.actionItems.map((a, i) => <li key={i} style={{ marginBottom: "3px" }}>{a}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+
+                {/* Community Health */}
+                {sentimentResult.engagementInsights && (
+                  <div style={{ ...card, borderTop: "2px solid #14b8a6" }}>
+                    <div style={{ fontSize: "12px", fontWeight: "600", marginBottom: "4px" }}>🏥 Community Health: <span style={{ textTransform: "capitalize", color: sentimentResult.engagementInsights.communityHealth === "healthy" ? "#10b981" : "#f59e0b" }}>{sentimentResult.engagementInsights.communityHealth}</span></div>
+                    <div style={{ fontSize: "11px", color: "var(--text-secondary)" }}>{sentimentResult.engagementInsights.recommendedResponse}</div>
+                  </div>
+                )}
+              </>
+            )}
+            {sentimentResult?.error && <div style={{ color: "#f87171", fontSize: "12px" }}>❌ {sentimentResult.error}</div>}
+          </div>
+        )}
+
+        {/* ─── Chapter Generator ─── */}
+        {activePanel === "chapters" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <div style={card}>
+              <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "8px" }}>📑 Auto-Chapter Generator</h3>
+              <p style={{ fontSize: "12px", color: "var(--text-tertiary)", marginBottom: "12px" }}>
+                Paste a script or transcript. The AI will generate YouTube chapters with timestamps, a ready-to-paste description block, and a pinned comment.
+              </p>
+              <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
+                <input value={chapterLength} onChange={e => setChapterLength(e.target.value)}
+                  placeholder="Video length (e.g. 10:00)" style={{ ...inputStyle, maxWidth: "150px" }} />
+                <button style={btnPrimary} onClick={generateChapters} disabled={chapterLoading || !chapterContent.trim()}>
+                  {chapterLoading ? "⏳ Generating..." : "📑 Generate Chapters"}
+                </button>
+              </div>
+              <textarea value={chapterContent} onChange={e => setChapterContent(e.target.value)}
+                placeholder="Paste your script or transcript here..." rows={6}
+                style={{ ...inputStyle, resize: "vertical" }} />
+            </div>
+
+            {chapterResult && !chapterResult.error && (
+              <>
+                {/* Chapters List */}
+                {chapterResult.chapters && (
+                  <div style={card}>
+                    <h4 style={{ fontSize: "13px", fontWeight: "600", marginBottom: "8px" }}>⏱️ Chapters</h4>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      {chapterResult.chapters.map((ch, i) => (
+                        <div key={i} style={{ display: "flex", gap: "10px", alignItems: "baseline", padding: "4px 0" }}>
+                          <span style={{ fontFamily: "monospace", fontSize: "12px", color: "#a78bfa", minWidth: "40px" }}>{ch.timestamp}</span>
+                          <span style={{ fontSize: "12px", fontWeight: "600" }}>{ch.title}</span>
+                          <span style={{ fontSize: "10px", color: "var(--text-tertiary)" }}>{ch.description}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Copy Blocks */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  {chapterResult.description && (
+                    <div style={card}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                        <h4 style={{ fontSize: "12px", fontWeight: "600" }}>📋 Description Block</h4>
+                        <button onClick={() => navigator.clipboard?.writeText(chapterResult.description)}
+                          style={{ ...btnSecondary, padding: "2px 8px", fontSize: "10px" }}>Copy</button>
+                      </div>
+                      <pre style={{ whiteSpace: "pre-wrap", fontSize: "11px", color: "var(--text-secondary)", background: "var(--bg-tertiary, rgba(255,255,255,0.02))", padding: "8px", borderRadius: "6px", margin: 0 }}>
+                        {chapterResult.description}
+                      </pre>
+                    </div>
+                  )}
+                  {chapterResult.pinnedComment && (
+                    <div style={card}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                        <h4 style={{ fontSize: "12px", fontWeight: "600" }}>📌 Pinned Comment</h4>
+                        <button onClick={() => navigator.clipboard?.writeText(chapterResult.pinnedComment)}
+                          style={{ ...btnSecondary, padding: "2px 8px", fontSize: "10px" }}>Copy</button>
+                      </div>
+                      <pre style={{ whiteSpace: "pre-wrap", fontSize: "11px", color: "var(--text-secondary)", background: "var(--bg-tertiary, rgba(255,255,255,0.02))", padding: "8px", borderRadius: "6px", margin: 0 }}>
+                        {chapterResult.pinnedComment}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+            {chapterResult?.error && <div style={{ color: "#f87171", fontSize: "12px" }}>❌ {chapterResult.error}</div>}
+          </div>
+        )}
+
+        {/* ─── Batch Editor ─── */}
+        {activePanel === "batch" && (
+          <div style={card}>
+            <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "8px" }}>⚡ Batch Video Editor</h3>
+            <p style={{ fontSize: "12px", color: "var(--text-tertiary)", marginBottom: "16px" }}>
+              Update up to 50 videos at once. Append links to descriptions, add tags, or replace titles in bulk.
+            </p>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase" }}>Video IDs (comma or newline separated)</label>
+                <textarea value={batchVideoIds} onChange={e => setBatchVideoIds(e.target.value)}
+                  placeholder={"dQw4w9WgXcQ\nabcdefghijk\nxyz123456"} rows={3}
+                  style={{ ...inputStyle, marginTop: "4px", resize: "vertical", fontFamily: "monospace" }} />
+              </div>
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase" }}>Action</label>
+                <select value={batchAction} onChange={e => setBatchAction(e.target.value)} style={{ ...inputStyle, marginTop: "4px" }}>
+                  <option value="appendDescription">📝 Append to description</option>
+                  <option value="prependDescription">📝 Prepend to description</option>
+                  <option value="addTags">🏷️ Add tags</option>
+                  <option value="removeTags">🗑️ Remove tags</option>
+                  <option value="title">✏️ Replace title</option>
+                  <option value="description">📄 Replace entire description</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase" }}>
+                  {batchAction.includes("Tag") ? "Tags (comma separated)" : "Value"}
+                </label>
+                <textarea value={batchValue} onChange={e => setBatchValue(e.target.value)}
+                  placeholder={batchAction.includes("Tag") ? "tag1, tag2, tag3" : "Text to apply..."}
+                  rows={2} style={{ ...inputStyle, marginTop: "4px", resize: "vertical" }} />
+              </div>
+            </div>
+
+            <button style={btnPrimary} onClick={runBatchEdit}
+              disabled={batchLoading || !batchVideoIds.trim() || !batchValue.trim()}>
+              {batchLoading ? "⏳ Processing..." : `⚡ Update ${batchVideoIds.split(/[,\n]/).filter(s => s.trim()).length} Videos`}
+            </button>
+
+            {batchResult && !batchResult.error && (
+              <div style={{ marginTop: "12px" }}>
+                <div style={{ padding: "10px 14px", borderRadius: "8px", background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)", marginBottom: "10px" }}>
+                  <span style={{ fontWeight: "600", color: "#10b981" }}>✅ {batchResult.succeeded}/{batchResult.totalProcessed} updated</span>
+                  {batchResult.failed > 0 && <span style={{ color: "#f87171", marginLeft: "8px" }}>· {batchResult.failed} failed</span>}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  {batchResult.results?.map((r, i) => (
+                    <div key={i} style={{ display: "flex", gap: "8px", alignItems: "center", fontSize: "11px" }}>
+                      <span style={{ color: r.success ? "#10b981" : "#ef4444" }}>{r.success ? "✅" : "❌"}</span>
+                      <code style={{ fontSize: "10px", color: "var(--text-tertiary)" }}>{r.videoId}</code>
+                      {r.title && <span style={{ color: "var(--text-secondary)" }}>{r.title}</span>}
+                      {r.error && <span style={{ color: "#f87171" }}>{r.error}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {batchResult?.error && <div style={{ marginTop: "12px", color: "#f87171", fontSize: "12px" }}>❌ {batchResult.error}</div>}
           </div>
         )}
       </div>
