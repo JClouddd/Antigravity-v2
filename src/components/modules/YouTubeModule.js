@@ -113,6 +113,14 @@ export default function YouTubeModule() {
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [showEventModal, setShowEventModal] = useState(false);
   const [eventForm, setEventForm] = useState({ title: "", date: "", channelId: "", type: "longform" });
+  // Phase 7 state
+  const [thumbForm, setThumbForm] = useState({ title: "", niche: "", style: "modern" });
+  const [thumbResult, setThumbResult] = useState(null);
+  const [thumbLoading, setThumbLoading] = useState(false);
+  const [suggestNiche, setSuggestNiche] = useState("");
+  const [suggestions, setSuggestions] = useState(null);
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const [learningData, setLearningData] = useState({ templateScores: {}, topFormats: [], insights: [] });
 
   /* ─── Firestore Load ─── */
   useEffect(() => {
@@ -122,6 +130,7 @@ export default function YouTubeModule() {
     loadTemplates();
     loadCalendar();
     loadNicheCache();
+    loadLearningData();
   }, [user]);
 
   const loadChannels = async () => {
@@ -283,6 +292,113 @@ export default function YouTubeModule() {
 
   const removeCalendarEvent = (id) => {
     saveCalendar(calendarEvents.filter(e => e.id !== id));
+  };
+
+  /* ─── Phase 7: Thumbnail Studio ─── */
+  const analyzeThumbnail = async () => {
+    if (!thumbForm.title.trim()) return;
+    setThumbLoading(true);
+    try {
+      const res = await fetch("/api/youtube/thumbnail-analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(thumbForm),
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      setThumbResult(await res.json());
+    } catch (e) {
+      console.error("Thumbnail analysis failed:", e);
+      setThumbResult({ error: e.message });
+    }
+    setThumbLoading(false);
+  };
+
+  /* ─── Phase 7: Auto-Suggest ─── */
+  const fetchSuggestions = async () => {
+    if (!suggestNiche.trim()) return;
+    setSuggestLoading(true);
+    try {
+      const performanceData = channels.flatMap(c =>
+        (c.recentVideos || []).slice(0, 5).map(v => ({
+          title: v.title, views: v.viewCount, likes: v.likeCount,
+          engagement: v.viewCount > 0 ? ((v.likeCount / v.viewCount) * 100).toFixed(1) : 0,
+        }))
+      );
+      const recentTopics = pipelineItems.map(p => p.title);
+      const res = await fetch("/api/youtube/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          niche: suggestNiche.trim(),
+          channelName: channels[0]?.name || "",
+          recentTopics,
+          performanceData,
+        }),
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      setSuggestions(await res.json());
+    } catch (e) {
+      console.error("Suggestions failed:", e);
+      setSuggestions({ error: e.message });
+    }
+    setSuggestLoading(false);
+  };
+
+  /* ─── Phase 7: Self-Learning Engine ─── */
+  const loadLearningData = async () => {
+    try {
+      const ref = doc(db, "users", user.uid, "youtube", "learning");
+      const snap = await getDoc(ref);
+      if (snap.exists()) setLearningData(snap.data());
+    } catch (e) { console.error("Load learning:", e); }
+  };
+
+  const saveLearningData = async (data) => {
+    setLearningData(data);
+    try {
+      const ref = doc(db, "users", user.uid, "youtube", "learning");
+      await setDoc(ref, { ...data, updatedAt: new Date().toISOString() }, { merge: true });
+    } catch (e) { console.error("Save learning:", e); }
+  };
+
+  const recordTemplateUsage = (templateId) => {
+    const updated = templates.map(t => t.id === templateId ? { ...t, usageCount: (t.usageCount || 0) + 1, lastUsed: new Date().toISOString() } : t);
+    saveTemplates(updated);
+  };
+
+  const recordVideoPerformance = (templateId, metrics) => {
+    const scores = { ...learningData.templateScores };
+    if (!scores[templateId]) scores[templateId] = { totalVideos: 0, totalViews: 0, totalLikes: 0, avgRetention: 0 };
+    const s = scores[templateId];
+    s.totalVideos += 1;
+    s.totalViews += metrics.views || 0;
+    s.totalLikes += metrics.likes || 0;
+    s.avgRetention = ((s.avgRetention * (s.totalVideos - 1)) + (metrics.retention || 0)) / s.totalVideos;
+
+    // Compute top formats
+    const formatScores = {};
+    templates.forEach(t => {
+      const sc = scores[t.id];
+      if (sc && sc.totalVideos > 0) {
+        formatScores[t.type] = formatScores[t.type] || { views: 0, videos: 0 };
+        formatScores[t.type].views += sc.totalViews;
+        formatScores[t.type].videos += sc.totalVideos;
+      }
+    });
+    const topFormats = Object.entries(formatScores)
+      .map(([type, d]) => ({ type, avgViews: Math.round(d.views / d.videos), videos: d.videos }))
+      .sort((a, b) => b.avgViews - a.avgViews);
+
+    // Generate insights
+    const insights = [];
+    if (topFormats.length > 0) insights.push(`${topFormats[0].type} videos perform best with ${fmtNumber(topFormats[0].avgViews)} avg views`);
+    const bestTemplate = Object.entries(scores).sort(([, a], [, b]) => (b.totalViews / b.totalVideos) - (a.totalViews / a.totalVideos))[0];
+    if (bestTemplate) {
+      const tpl = templates.find(t => t.id === bestTemplate[0]);
+      if (tpl) insights.push(`"${tpl.name}" template avg ${fmtNumber(Math.round(bestTemplate[1].totalViews / bestTemplate[1].totalVideos))} views/video`);
+    }
+
+    saveLearningData({ ...learningData, templateScores: scores, topFormats, insights });
   };
 
   /* ─── Channel Actions ─── */
@@ -854,6 +970,9 @@ export default function YouTubeModule() {
     if (activeTool === "script") return renderScriptGenerator();
     if (activeTool === "seo") return renderSeoOptimizer();
     if (activeTool === "calendar") return renderContentCalendar();
+    if (activeTool === "thumbnail") return renderThumbnailStudio();
+    if (activeTool === "suggest") return renderAutoSuggest();
+    if (activeTool === "learning") return renderLearningInsights();
 
     return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -925,23 +1044,21 @@ export default function YouTubeModule() {
           { icon: "📝", label: "Script Generator", desc: "AI-powered video scripts with hooks, sections, CTAs", color: "#8b5cf6", action: () => setActiveTool("script") },
           { icon: "🏷️", label: "Title & SEO", desc: "Optimize titles, tags, and descriptions", color: "#06b6d4", action: () => setActiveTool("seo") },
           { icon: "📅", label: "Content Calendar", desc: "Schedule across all channels", color: "#10b981", action: () => setActiveTool("calendar") },
-          { icon: "🖼️", label: "Thumbnail Studio", desc: "Generate and analyze thumbnails", color: "#3b82f6", action: null },
-          { icon: "🎨", label: "Media Generator", desc: "AI images and video clips", color: "#f59e0b", action: null },
-          { icon: "🤖", label: "Auto-Suggest", desc: "AI recommends topics based on trends", color: "#ef4444", action: null },
+          { icon: "🖼️", label: "Thumbnail Studio", desc: "AI thumbnail concepts and A/B plans", color: "#3b82f6", action: () => setActiveTool("thumbnail") },
+          { icon: "🤖", label: "Auto-Suggest", desc: "AI topic recommendations from trends", color: "#ef4444", action: () => setActiveTool("suggest") },
+          { icon: "🧠", label: "Learning Insights", desc: "Performance data and format analysis", color: "#f59e0b", action: () => setActiveTool("learning") },
         ].map((tool, i) => (
           <div key={i} style={{
             ...cardHover, padding: "20px", textAlign: "center",
             borderTop: `3px solid ${tool.color}`,
-            opacity: tool.action ? 1 : 0.6,
           }}
-            onClick={tool.action || undefined}
-            onMouseEnter={e => { if (tool.action) { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = `0 8px 32px ${tool.color}20`; }}}
+            onClick={tool.action}
+            onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = `0 8px 32px ${tool.color}20`; }}
             onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}
           >
             <div style={{ fontSize: "28px", marginBottom: "8px" }}>{tool.icon}</div>
             <div style={{ fontSize: "13px", fontWeight: "600", marginBottom: "4px" }}>{tool.label}</div>
             <div style={{ fontSize: "11px", color: "var(--text-tertiary, rgba(255,255,255,0.4))" }}>{tool.desc}</div>
-            {!tool.action && <div style={{ fontSize: "9px", color: "var(--text-tertiary, rgba(255,255,255,0.3))", marginTop: "6px" }}>Coming soon</div>}
           </div>
         ))}
       </div>
@@ -1223,6 +1340,292 @@ export default function YouTubeModule() {
       </div>
     );
   };
+
+  /* ─── Thumbnail Studio Full View ─── */
+  const renderThumbnailStudio = () => (
+    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <button onClick={() => setActiveTool(null)} style={{ ...btnSecondary, alignSelf: "flex-start", padding: "6px 12px" }}>← Back to Tools</button>
+
+      <div style={card}>
+        <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "16px" }}>🖼️ Thumbnail Studio</h3>
+        <p style={{ fontSize: "12px", color: "var(--text-tertiary, rgba(255,255,255,0.5))", marginBottom: "16px" }}>
+          Get AI-generated thumbnail concepts with composition, color palettes, and A/B test plans.
+        </p>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+          <div>
+            <label style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase" }}>Video Title *</label>
+            <input value={thumbForm.title} onChange={e => setThumbForm(p => ({ ...p, title: e.target.value }))}
+              placeholder="Your video title" style={{ ...inputStyle, marginTop: "4px" }} />
+          </div>
+          <div>
+            <label style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase" }}>Niche</label>
+            <input value={thumbForm.niche} onChange={e => setThumbForm(p => ({ ...p, niche: e.target.value }))}
+              placeholder="e.g. tech, fitness" style={{ ...inputStyle, marginTop: "4px" }} />
+          </div>
+          <div>
+            <label style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase" }}>Style</label>
+            <select value={thumbForm.style} onChange={e => setThumbForm(p => ({ ...p, style: e.target.value }))}
+              style={{ ...inputStyle, marginTop: "4px" }}>
+              {["modern", "minimalist", "bold", "cinematic", "playful", "professional"].map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <button style={btnPrimary} onClick={analyzeThumbnail} disabled={thumbLoading || !thumbForm.title.trim()}>
+          {thumbLoading ? "⏳ Analyzing..." : "✨ Generate Concepts"}
+        </button>
+      </div>
+
+      {thumbResult && !thumbResult.error && (
+        <>
+          {/* Thumbnail concepts */}
+          {thumbResult.concepts && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "12px" }}>
+              {thumbResult.concepts.map((c, i) => (
+                <div key={i} style={card}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                    <span style={{ fontWeight: "600", fontSize: "13px" }}>{c.name}</span>
+                    <span style={{
+                      padding: "2px 10px", borderRadius: "12px", fontSize: "11px", fontWeight: "600",
+                      background: c.ctrScore >= 80 ? "rgba(16,185,129,0.15)" : "rgba(59,130,246,0.15)",
+                      color: c.ctrScore >= 80 ? "#10b981" : "#3b82f6",
+                    }}>CTR: {c.ctrScore}</span>
+                  </div>
+                  <p style={{ fontSize: "11px", color: "var(--text-secondary, rgba(255,255,255,0.7))", marginBottom: "8px" }}>{c.layout}</p>
+                  <div style={{ fontSize: "11px", marginBottom: "6px" }}>
+                    <strong>Text:</strong> <span style={{ color: "#f59e0b" }}>{c.textOverlay}</span>
+                  </div>
+                  <div style={{ fontSize: "11px", marginBottom: "6px" }}>
+                    <strong>Expression:</strong> {c.faceExpression}
+                  </div>
+                  {c.colorPalette && (
+                    <div style={{ display: "flex", gap: "4px", marginBottom: "6px" }}>
+                      {c.colorPalette.map((color, ci) => (
+                        <div key={ci} style={{ width: "24px", height: "24px", borderRadius: "6px", background: color, border: "1px solid rgba(255,255,255,0.1)" }} title={color} />
+                      ))}
+                    </div>
+                  )}
+                  {c.elements && (
+                    <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+                      {c.elements.map((el, ei) => (
+                        <span key={ei} style={{ padding: "2px 8px", borderRadius: "10px", fontSize: "10px", background: "var(--bg-tertiary, rgba(255,255,255,0.04))" }}>{el}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* A/B Test Plan */}
+          {thumbResult.abTestPlan && (
+            <div style={card}>
+              <h3 style={{ fontSize: "14px", fontWeight: "600", marginBottom: "10px" }}>🧪 A/B Test Plan</h3>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", fontSize: "12px" }}>
+                <div style={{ padding: "10px", borderRadius: "8px", background: "rgba(59,130,246,0.06)", border: "1px solid rgba(59,130,246,0.15)" }}>
+                  <div style={{ fontWeight: "600", color: "#3b82f6", marginBottom: "4px" }}>Variant A</div>
+                  {thumbResult.abTestPlan.variantA}
+                </div>
+                <div style={{ padding: "10px", borderRadius: "8px", background: "rgba(139,92,246,0.06)", border: "1px solid rgba(139,92,246,0.15)" }}>
+                  <div style={{ fontWeight: "600", color: "#8b5cf6", marginBottom: "4px" }}>Variant B</div>
+                  {thumbResult.abTestPlan.variantB}
+                </div>
+              </div>
+              <div style={{ marginTop: "8px", fontSize: "11px", color: "var(--text-tertiary, rgba(255,255,255,0.5))" }}>
+                📏 Metric: {thumbResult.abTestPlan.metric} · ⏱ Duration: {thumbResult.abTestPlan.duration}
+              </div>
+            </div>
+          )}
+
+          {/* Design Principles */}
+          {thumbResult.principles && (
+            <div style={card}>
+              <h3 style={{ fontSize: "14px", fontWeight: "600", marginBottom: "8px" }}>✅ Design Principles</h3>
+              <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", color: "var(--text-secondary, rgba(255,255,255,0.7))" }}>
+                {thumbResult.principles.map((p, i) => <li key={i} style={{ marginBottom: "4px" }}>{p}</li>)}
+              </ul>
+              {thumbResult.avoidList && (
+                <>
+                  <h4 style={{ fontSize: "13px", fontWeight: "600", marginTop: "12px", marginBottom: "6px", color: "#f87171" }}>❌ Avoid</h4>
+                  <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", color: "var(--text-tertiary, rgba(255,255,255,0.5))" }}>
+                    {thumbResult.avoidList.map((a, i) => <li key={i} style={{ marginBottom: "4px" }}>{a}</li>)}
+                  </ul>
+                </>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {thumbResult?.error && (
+        <div style={{ padding: "16px", borderRadius: "10px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171", fontSize: "12px" }}>
+          ❌ {thumbResult.error}
+        </div>
+      )}
+    </div>
+  );
+
+  /* ─── Auto-Suggest Full View ─── */
+  const renderAutoSuggest = () => (
+    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <button onClick={() => setActiveTool(null)} style={{ ...btnSecondary, alignSelf: "flex-start", padding: "6px 12px" }}>← Back to Tools</button>
+
+      <div style={card}>
+        <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "8px" }}>🤖 Auto-Suggest</h3>
+        <p style={{ fontSize: "12px", color: "var(--text-tertiary, rgba(255,255,255,0.5))", marginBottom: "16px" }}>
+          AI analyzes trends, your channel performance, and pipeline to suggest winning topics. Uses your video data to learn what works.
+        </p>
+
+        <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
+          <input value={suggestNiche} onChange={e => setSuggestNiche(e.target.value)}
+            placeholder="Enter your niche (e.g. AI tools, personal finance, gaming)..."
+            style={inputStyle}
+            onKeyDown={e => { if (e.key === "Enter") fetchSuggestions(); }}
+          />
+          <button style={btnPrimary} onClick={fetchSuggestions} disabled={suggestLoading || !suggestNiche.trim()}>
+            {suggestLoading ? "⏳ Thinking..." : "✨ Suggest Topics"}
+          </button>
+        </div>
+      </div>
+
+      {suggestions && !suggestions.error && suggestions.suggestions && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          {suggestions.suggestions.map((s, i) => (
+            <div key={i} style={{
+              ...card, padding: "14px",
+              borderLeft: `3px solid ${s.trendScore >= 80 ? "#10b981" : s.trendScore >= 60 ? "#3b82f6" : "#f59e0b"}`,
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: "6px" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: "600", fontSize: "13px" }}>{s.title}</div>
+                  <div style={{ fontSize: "11px", color: "var(--text-tertiary, rgba(255,255,255,0.5))", marginTop: "2px" }}>
+                    💡 {s.hook}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                  <span style={{
+                    padding: "2px 8px", borderRadius: "10px", fontSize: "10px",
+                    background: "var(--bg-tertiary, rgba(255,255,255,0.04))",
+                  }}>{VIDEO_TYPES.find(vt => vt.id === s.type)?.icon || "🎬"} {s.type}</span>
+                  <span style={{
+                    padding: "2px 8px", borderRadius: "10px", fontSize: "10px", fontWeight: "600",
+                    background: s.trendScore >= 80 ? "rgba(16,185,129,0.15)" : "rgba(59,130,246,0.15)",
+                    color: s.trendScore >= 80 ? "#10b981" : "#3b82f6",
+                  }}>🔥 {s.trendScore}</span>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: "12px", fontSize: "10px", color: "var(--text-tertiary, rgba(255,255,255,0.4))", marginBottom: "6px" }}>
+                <span>📊 {s.estimatedViews} views</span>
+                <span>⚡ {s.difficulty}</span>
+                <span>💬 {s.reason}</span>
+              </div>
+              {s.keywords && (
+                <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+                  {s.keywords.map((kw, ki) => (
+                    <span key={ki} style={{ padding: "1px 8px", borderRadius: "10px", fontSize: "9px", background: "var(--bg-tertiary, rgba(255,255,255,0.04))" }}>{kw}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {suggestions?.error && (
+        <div style={{ padding: "16px", borderRadius: "10px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171", fontSize: "12px" }}>
+          ❌ {suggestions.error}
+        </div>
+      )}
+    </div>
+  );
+
+  /* ─── Learning Insights Full View ─── */
+  const renderLearningInsights = () => (
+    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <button onClick={() => setActiveTool(null)} style={{ ...btnSecondary, alignSelf: "flex-start", padding: "6px 12px" }}>← Back to Tools</button>
+
+      <div style={card}>
+        <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "8px" }}>🧠 Self-Learning Engine</h3>
+        <p style={{ fontSize: "12px", color: "var(--text-tertiary, rgba(255,255,255,0.5))", marginBottom: "16px" }}>
+          The system tracks template usage, video performance, and format success rates to automatically refine content strategy recommendations.
+        </p>
+
+        {/* AI Insights */}
+        {learningData.insights && learningData.insights.length > 0 && (
+          <div style={{ padding: "14px", borderRadius: "10px", background: "rgba(139,92,246,0.06)", border: "1px solid rgba(139,92,246,0.15)", marginBottom: "16px" }}>
+            <div style={{ fontSize: "12px", fontWeight: "600", color: "#a78bfa", marginBottom: "6px" }}>💡 AI Insights</div>
+            <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", color: "var(--text-secondary, rgba(255,255,255,0.7))" }}>
+              {learningData.insights.map((ins, i) => <li key={i} style={{ marginBottom: "4px" }}>{ins}</li>)}
+            </ul>
+          </div>
+        )}
+
+        {/* Top Formats */}
+        <div style={{ marginBottom: "16px" }}>
+          <h4 style={{ fontSize: "13px", fontWeight: "600", marginBottom: "10px" }}>📊 Format Performance</h4>
+          {learningData.topFormats && learningData.topFormats.length > 0 ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "10px" }}>
+              {learningData.topFormats.map((f, i) => (
+                <div key={i} style={{
+                  padding: "12px", borderRadius: "10px",
+                  background: "var(--bg-tertiary, rgba(255,255,255,0.02))",
+                  border: "1px solid var(--border, rgba(255,255,255,0.04))",
+                  borderLeft: `3px solid ${i === 0 ? "#10b981" : i === 1 ? "#3b82f6" : "#f59e0b"}`,
+                }}>
+                  <div style={{ fontWeight: "600", fontSize: "13px", textTransform: "capitalize" }}>{VIDEO_TYPES.find(vt => vt.id === f.type)?.icon} {f.type}</div>
+                  <div style={{ fontSize: "11px", color: "var(--text-tertiary, rgba(255,255,255,0.5))", marginTop: "4px" }}>
+                    {fmtNumber(f.avgViews)} avg views · {f.videos} videos
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", padding: "20px", color: "var(--text-tertiary, rgba(255,255,255,0.4))", fontSize: "12px" }}>
+              No performance data yet. As you publish videos using templates and record their metrics, the system will learn which formats work best.
+            </div>
+          )}
+        </div>
+
+        {/* Template Scores */}
+        <h4 style={{ fontSize: "13px", fontWeight: "600", marginBottom: "10px" }}>🎯 Template Scores</h4>
+        {templates.length > 0 ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            {templates.map(t => {
+              const score = learningData.templateScores?.[t.id];
+              return (
+                <div key={t.id} style={{
+                  padding: "10px 14px", borderRadius: "8px",
+                  background: "var(--bg-tertiary, rgba(255,255,255,0.02))",
+                  border: "1px solid var(--border, rgba(255,255,255,0.04))",
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                }}>
+                  <div>
+                    <div style={{ fontWeight: "500", fontSize: "12px" }}>{t.name}</div>
+                    <div style={{ fontSize: "10px", color: "var(--text-tertiary, rgba(255,255,255,0.4))" }}>
+                      {VIDEO_TYPES.find(vt => vt.id === t.type)?.icon} {t.type} · Used {t.usageCount || 0}×
+                    </div>
+                  </div>
+                  {score ? (
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: "12px", fontWeight: "600", color: "#10b981" }}>{fmtNumber(Math.round(score.totalViews / score.totalVideos))} avg views</div>
+                      <div style={{ fontSize: "10px", color: "var(--text-tertiary, rgba(255,255,255,0.4))" }}>{score.totalVideos} videos tracked</div>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: "10px", color: "var(--text-tertiary, rgba(255,255,255,0.3))" }}>No data yet</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div style={{ textAlign: "center", padding: "20px", color: "var(--text-tertiary, rgba(255,255,255,0.4))", fontSize: "12px" }}>
+            Create templates first, then the system will track their performance automatically.
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   /* ═══════════════════════════════════════════════════════
      RENDER: Add Channel Modal
