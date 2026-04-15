@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/AuthContext";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
+import YouTubeAdvancedTab from "./YouTubeAdvancedTab";
 
 /* ─── Helpers ─── */
 const fmtNumber = (n) => {
@@ -25,6 +26,7 @@ const TABS = [
   { id: "channels", label: "Channels", icon: "📺" },
   { id: "creation", label: "Creation Tools", icon: "🎨" },
   { id: "publish", label: "Upload & Publish", icon: "🚀" },
+  { id: "pro", label: "Pro Tools", icon: "⚡" },
 ];
 
 /* ─── Pipeline Stages ─── */
@@ -2059,6 +2061,7 @@ export default function YouTubeModule() {
       {activeTab === "channels" && renderChannelsTab()}
       {activeTab === "creation" && renderCreationTab()}
       {activeTab === "publish" && renderPublishTab()}
+      {activeTab === "pro" && <YouTubeAdvancedTab googleAccessToken={googleAccessToken} channels={channels} />}
 
       {/* Modals */}
       {showAddModal && renderAddModal()}

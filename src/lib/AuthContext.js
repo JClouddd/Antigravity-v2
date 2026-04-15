@@ -89,6 +89,7 @@ export function AuthProvider({ children }) {
     provider.addScope("https://www.googleapis.com/auth/youtube.readonly");
     provider.addScope("https://www.googleapis.com/auth/youtube.upload");
     provider.addScope("https://www.googleapis.com/auth/youtube.force-ssl");
+    provider.addScope("https://www.googleapis.com/auth/yt-analytics.readonly");
     return provider;
   };
 
