@@ -73,6 +73,18 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
   const [repurposeLoading, setRepurposeLoading] = useState(false);
   const [repurposeTargets, setRepurposeTargets] = useState(["shorts", "community", "tweet"]);
 
+  // Community Posts
+  const [communityTopic, setCommunityTopic] = useState("");
+  const [communityType, setCommunityType] = useState("mixed");
+  const [communityPosts, setCommunityPosts] = useState(null);
+  const [communityLoading, setCommunityLoading] = useState(false);
+
+  // Enhanced Playlists
+  const [selectedPlaylist, setSelectedPlaylist] = useState(null);
+  const [playlistItems, setPlaylistItems] = useState(null);
+  const [autoOrganizeLoading, setAutoOrganizeLoading] = useState(false);
+  const [autoOrganizeResult, setAutoOrganizeResult] = useState(null);
+
   /* ─── API Calls ─── */
   const fetchDeepAnalytics = async () => {
     if (!googleAccessToken) return;
@@ -186,13 +198,74 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
     setRepurposeLoading(false);
   };
 
+  const generateCommunityPosts = async () => {
+    if (!communityTopic.trim()) return;
+    setCommunityLoading(true);
+    try {
+      const res = await fetch("/api/youtube/community", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: communityTopic.trim(),
+          postType: communityType,
+          channelNiche: channels?.[0]?.niche || "",
+        }),
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      setCommunityPosts(await res.json());
+    } catch (e) { setCommunityPosts({ error: e.message }); }
+    setCommunityLoading(false);
+  };
+
+  const fetchPlaylistItems = async (playlistId) => {
+    if (!googleAccessToken) return;
+    try {
+      const res = await fetch(`/api/youtube/playlists?playlistId=${playlistId}`, {
+        headers: { Authorization: `Bearer ${googleAccessToken}` },
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      setPlaylistItems(await res.json());
+    } catch (e) { setPlaylistItems({ error: e.message }); }
+  };
+
+  const autoOrganizePlaylist = async (playlistId, sortBy) => {
+    if (!googleAccessToken) return;
+    setAutoOrganizeLoading(true);
+    setAutoOrganizeResult(null);
+    try {
+      const res = await fetch("/api/youtube/playlists", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${googleAccessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "autoOrganize", playlistId, sortBy }),
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      const data = await res.json();
+      setAutoOrganizeResult(data);
+      fetchPlaylistItems(playlistId);
+    } catch (e) { setAutoOrganizeResult({ error: e.message }); }
+    setAutoOrganizeLoading(false);
+  };
+
+  const removeFromPlaylist = async (itemId, playlistId) => {
+    if (!googleAccessToken) return;
+    try {
+      const res = await fetch("/api/youtube/playlists", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${googleAccessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "removeVideo", itemId }),
+      });
+      if (res.ok) fetchPlaylistItems(playlistId);
+    } catch (e) { console.error("Remove failed:", e); }
+  };
+
   /* ─── Premium Tools Grid ─── */
   const tools = [
     { id: "analytics", icon: "📈", label: "Deep Analytics", desc: "Watch time, retention, traffic sources, demographics", color: "#3b82f6" },
     { id: "competitors", icon: "🏆", label: "Competitor Tracker", desc: "Benchmark against any channel", color: "#f59e0b" },
     { id: "viral", icon: "🔥", label: "Viral Predictor", desc: "AI scores your video's viral potential", color: "#ef4444" },
     { id: "comments", icon: "💬", label: "Comment Manager", desc: "Read, reply, and manage comments", color: "#10b981" },
-    { id: "playlists", icon: "📋", label: "Playlist Manager", desc: "Create and manage playlists", color: "#8b5cf6" },
+    { id: "playlists", icon: "📋", label: "Playlist Manager", desc: "Create, organize, and auto-sort playlists", color: "#8b5cf6" },
+    { id: "community", icon: "📝", label: "Community Posts", desc: "Generate text, poll, and quiz drafts", color: "#ec4899" },
     { id: "repurpose", icon: "♻️", label: "Content Repurposer", desc: "Transform content across platforms", color: "#06b6d4" },
   ];
 
@@ -439,7 +512,11 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
             {playlists && !playlists.error && (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "10px" }}>
                 {(playlists.playlists || []).map(p => (
-                  <div key={p.id} style={{ ...card, padding: "12px" }}>
+                  <div key={p.id} style={{ ...card, padding: "12px", cursor: "pointer" }}
+                    onClick={() => { setSelectedPlaylist(p); fetchPlaylistItems(p.id); }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = "#8b5cf6"; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = ""; }}>
+                    {p.thumbnail && <img src={p.thumbnail} alt="" style={{ width: "100%", borderRadius: "8px", marginBottom: "8px" }} />}
                     <div style={{ fontWeight: "600", fontSize: "12px" }}>{p.title}</div>
                     <div style={{ fontSize: "10px", color: "var(--text-tertiary)", marginTop: "2px" }}>
                       {p.itemCount} videos · {p.privacy}
@@ -450,6 +527,48 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
             )}
             {!playlists && <button style={btnSecondary} onClick={fetchPlaylists}>Load Playlists</button>}
             {playlists?.error && <div style={{ color: "#f87171", fontSize: "12px" }}>❌ {playlists.error}</div>}
+
+            {/* Playlist Drill-Down */}
+            {selectedPlaylist && playlistItems && !playlistItems.error && (
+              <div style={{ marginTop: "16px", borderTop: "1px solid var(--border, rgba(255,255,255,0.06))", paddingTop: "16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                  <div>
+                    <h4 style={{ fontSize: "14px", fontWeight: "600" }}>{selectedPlaylist.title}</h4>
+                    <span style={{ fontSize: "10px", color: "var(--text-tertiary)" }}>{playlistItems.totalItems} items</span>
+                  </div>
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    {["dateNewest", "dateOldest", "titleAZ", "titleZA"].map(sort => (
+                      <button key={sort} style={{ ...btnSecondary, padding: "4px 10px", fontSize: "10px" }}
+                        disabled={autoOrganizeLoading}
+                        onClick={() => autoOrganizePlaylist(selectedPlaylist.id, sort)}>
+                        {sort === "dateNewest" ? "📅 Newest" : sort === "dateOldest" ? "📅 Oldest" : sort === "titleAZ" ? "🔤 A→Z" : "🔤 Z→A"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {autoOrganizeResult && !autoOrganizeResult.error && (
+                  <div style={{ padding: "8px 12px", borderRadius: "8px", background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)", fontSize: "11px", color: "#10b981", marginBottom: "10px" }}>
+                    ✅ Reorganized: {autoOrganizeResult.itemsMoved} items moved (sorted by {autoOrganizeResult.sortBy})
+                  </div>
+                )}
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  {(playlistItems.items || []).map((item, i) => (
+                    <div key={item.id} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 10px", borderRadius: "8px", background: "var(--bg-tertiary, rgba(255,255,255,0.02))" }}>
+                      <span style={{ fontSize: "10px", color: "var(--text-tertiary)", width: "20px" }}>#{i + 1}</span>
+                      {item.thumbnail && <img src={item.thumbnail} alt="" style={{ width: "48px", height: "27px", borderRadius: "4px", objectFit: "cover" }} />}
+                      <div style={{ flex: 1, fontSize: "11px", fontWeight: "500" }}>{item.title}</div>
+                      <button onClick={() => removeFromPlaylist(item.id, selectedPlaylist.id)}
+                        style={{ ...btnSecondary, padding: "2px 6px", fontSize: "9px", color: "#ef4444" }}>✕</button>
+                    </div>
+                  ))}
+                </div>
+
+                <button onClick={() => { setSelectedPlaylist(null); setPlaylistItems(null); setAutoOrganizeResult(null); }}
+                  style={{ ...btnSecondary, marginTop: "10px", fontSize: "11px" }}>← Back to playlists</button>
+              </div>
+            )}
           </div>
         )}
 
@@ -510,6 +629,90 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
               </div>
             )}
             {repurposeResult?.error && <div style={{ color: "#f87171", fontSize: "12px" }}>❌ {repurposeResult.error}</div>}
+          </div>
+        )}
+
+        {/* ─── Community Posts ─── */}
+        {activePanel === "community" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <div style={card}>
+              <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "8px" }}>📝 Community Post Generator</h3>
+              <p style={{ fontSize: "12px", color: "var(--text-tertiary)", marginBottom: "12px" }}>
+                Generate ready-to-paste community tab posts. YouTube&apos;s API doesn&apos;t support direct posting — copy these into YouTube Studio.
+              </p>
+
+              <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "10px", marginBottom: "12px" }}>
+                <input value={communityTopic} onChange={e => setCommunityTopic(e.target.value)}
+                  placeholder="Topic or theme for posts..." style={inputStyle} />
+                <select value={communityType} onChange={e => setCommunityType(e.target.value)} style={inputStyle}>
+                  <option value="mixed">🎲 Mix of all types</option>
+                  <option value="text">📝 Text posts</option>
+                  <option value="poll">📊 Polls</option>
+                  <option value="quiz">🧠 Quizzes</option>
+                  <option value="image">🖼️ Image posts</option>
+                </select>
+              </div>
+
+              <button style={btnPrimary} onClick={generateCommunityPosts} disabled={communityLoading || !communityTopic.trim()}>
+                {communityLoading ? "⏳ Generating..." : "📝 Generate Posts"}
+              </button>
+            </div>
+
+            {communityPosts && !communityPosts.error && communityPosts.posts && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {communityPosts.posts.map((post, i) => (
+                  <div key={i} style={{ ...card, padding: "14px", borderLeft: `3px solid ${post.type === "poll" ? "#3b82f6" : post.type === "quiz" ? "#f59e0b" : post.type === "image" ? "#ec4899" : "#10b981"}` }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <span style={{ fontSize: "11px", fontWeight: "600", textTransform: "capitalize", padding: "2px 8px", borderRadius: "8px", background: "var(--bg-tertiary, rgba(255,255,255,0.04))" }}>
+                        {post.type === "poll" ? "📊" : post.type === "quiz" ? "🧠" : post.type === "image" ? "🖼️" : "📝"} {post.type}
+                      </span>
+                      <span style={{ fontSize: "10px", color: post.estimatedEngagement === "high" ? "#10b981" : "var(--text-tertiary)" }}>
+                        {post.estimatedEngagement} engagement · {post.bestTime}
+                      </span>
+                    </div>
+
+                    <pre style={{ whiteSpace: "pre-wrap", fontSize: "12px", color: "var(--text-secondary)", background: "var(--bg-tertiary, rgba(255,255,255,0.02))", padding: "10px", borderRadius: "8px", margin: "0 0 8px 0", cursor: "pointer" }}
+                      onClick={() => { navigator.clipboard?.writeText(post.content); }}>
+                      {post.content}
+                    </pre>
+
+                    {post.pollOptions && post.pollOptions.length > 0 && (
+                      <div style={{ marginBottom: "6px" }}>
+                        <div style={{ fontSize: "10px", fontWeight: "600", marginBottom: "4px", color: "var(--text-tertiary)" }}>Poll Options:</div>
+                        {post.pollOptions.map((opt, oi) => (
+                          <div key={oi} style={{ padding: "4px 10px", borderRadius: "6px", fontSize: "11px", background: "var(--bg-tertiary, rgba(255,255,255,0.04))", marginBottom: "2px" }}>
+                            {opt}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {post.quizAnswer && (
+                      <div style={{ fontSize: "10px", color: "#f59e0b" }}>✅ Answer: {post.quizAnswer}</div>
+                    )}
+
+                    {post.hashtags && (
+                      <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginTop: "4px" }}>
+                        {post.hashtags.map((tag, ti) => (
+                          <span key={ti} style={{ padding: "1px 6px", borderRadius: "6px", fontSize: "9px", background: "rgba(139,92,246,0.1)", color: "#a78bfa" }}>{tag}</span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div style={{ fontSize: "10px", color: "var(--text-tertiary)", marginTop: "4px" }}>💡 {post.strategy}</div>
+                    <button onClick={() => { navigator.clipboard?.writeText(post.content + (post.hashtags ? "\n\n" + post.hashtags.join(" ") : "")); }}
+                      style={{ ...btnSecondary, padding: "3px 10px", fontSize: "10px", marginTop: "6px" }}>📋 Copy</button>
+                  </div>
+                ))}
+
+                {communityPosts.note && (
+                  <div style={{ padding: "10px", borderRadius: "8px", background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.15)", fontSize: "11px", color: "#f59e0b" }}>
+                    ⚠️ {communityPosts.note}
+                  </div>
+                )}
+              </div>
+            )}
+            {communityPosts?.error && <div style={{ color: "#f87171", fontSize: "12px" }}>❌ {communityPosts.error}</div>}
           </div>
         )}
       </div>
