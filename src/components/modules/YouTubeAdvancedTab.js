@@ -129,6 +129,17 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
   const [batchResult, setBatchResult] = useState(null);
   const [batchLoading, setBatchLoading] = useState(false);
 
+  // Niche Lab
+  const [nicheInterests, setNicheInterests] = useState("");
+  const [nicheStyle, setNicheStyle] = useState("any");
+  const [nicheBudget, setNicheBudget] = useState("low");
+  const [nicheGoal, setNicheGoal] = useState("revenue");
+  const [nicheResults, setNicheResults] = useState(null);
+  const [nicheLoading, setNicheLoading] = useState(false);
+  const [deepDiveNiche, setDeepDiveNiche] = useState(null);
+  const [deepDiveResult, setDeepDiveResult] = useState(null);
+  const [deepDiveLoading, setDeepDiveLoading] = useState(false);
+
   /* ─── API Calls ─── */
   const fetchDeepAnalytics = async () => {
     if (!googleAccessToken) return;
@@ -361,6 +372,38 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
     setBatchLoading(false);
   };
 
+  const discoverNiches = async () => {
+    setNicheLoading(true);
+    setNicheResults(null);
+    try {
+      const interests = nicheInterests.split(",").map(s => s.trim()).filter(Boolean);
+      const res = await fetch("/api/youtube/niche-discover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interests, contentStyle: nicheStyle, budget: nicheBudget, goal: nicheGoal }),
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      setNicheResults(await res.json());
+    } catch (e) { setNicheResults({ error: e.message }); }
+    setNicheLoading(false);
+  };
+
+  const runDeepDive = async (niche) => {
+    setDeepDiveNiche(niche);
+    setDeepDiveLoading(true);
+    setDeepDiveResult(null);
+    try {
+      const res = await fetch("/api/youtube/niche-deepdive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ niche }),
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      setDeepDiveResult(await res.json());
+    } catch (e) { setDeepDiveResult({ error: e.message }); }
+    setDeepDiveLoading(false);
+  };
+
   /* ─── Premium Tools Grid ─── */
   const tools = [
     { id: "analytics", icon: "📈", label: "Deep Analytics", desc: "Watch time, retention, traffic sources, demographics", color: "#3b82f6" },
@@ -373,6 +416,7 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
     { id: "sentiment", icon: "🎭", label: "Sentiment Analysis", desc: "Bulk-analyze comment mood and themes", color: "#14b8a6" },
     { id: "chapters", icon: "📑", label: "Chapter Generator", desc: "Auto-generate chapters from scripts", color: "#a855f7" },
     { id: "batch", icon: "⚡", label: "Batch Editor", desc: "Update 50 videos at once", color: "#f97316" },
+    { id: "niche", icon: "🧭", label: "Niche Lab", desc: "Discover profitable niches with AI analysis", color: "#22d3ee" },
   ];
 
   // Channel Selector bar (shown inside panels)
@@ -1073,6 +1117,241 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
               </div>
             )}
             {batchResult?.error && <div style={{ marginTop: "12px", color: "#f87171", fontSize: "12px" }}>❌ {batchResult.error}</div>}
+          </div>
+        )}
+
+        {/* ─── Niche Lab ─── */}
+        {activePanel === "niche" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            {/* Deep Dive View */}
+            {deepDiveNiche && (
+              <>
+                <button onClick={() => { setDeepDiveNiche(null); setDeepDiveResult(null); }} style={{ ...btnSecondary, alignSelf: "flex-start" }}>← Back to Niche Results</button>
+
+                {deepDiveLoading && <div style={{ ...card, textAlign: "center", padding: "40px" }}>⏳ Running deep analysis on &quot;{deepDiveNiche}&quot;...</div>}
+
+                {deepDiveResult && !deepDiveResult.error && (
+                  <>
+                    {/* Overview */}
+                    <div style={{ ...card, borderTop: `3px solid ${deepDiveResult.verdict?.recommendation?.includes("yes") ? "#10b981" : deepDiveResult.verdict?.recommendation === "maybe" ? "#f59e0b" : "#ef4444"}` }}>
+                      <h3 style={{ fontSize: "18px", fontWeight: "700", marginBottom: "8px" }}>🧭 {deepDiveResult.niche}</h3>
+                      <p style={{ fontSize: "12px", color: "var(--text-secondary)", marginBottom: "12px" }}>{deepDiveResult.overview?.description}</p>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px" }}>
+                        {[
+                          { label: "Market", value: deepDiveResult.overview?.marketSize, color: "#3b82f6" },
+                          { label: "Stage", value: deepDiveResult.overview?.maturityStage, color: "#8b5cf6" },
+                          { label: "Avg CPM", value: deepDiveResult.overview?.estimatedCPM?.average, color: "#10b981" },
+                          { label: "Confidence", value: `${deepDiveResult.verdict?.confidence}%`, color: "#f59e0b" },
+                        ].map((s, i) => (
+                          <div key={i} style={{ textAlign: "center", padding: "10px", borderRadius: "8px", background: "var(--bg-tertiary, rgba(255,255,255,0.02))", borderTop: `2px solid ${s.color}` }}>
+                            <div style={{ fontSize: "14px", fontWeight: "700", color: s.color, textTransform: "capitalize" }}>{s.value}</div>
+                            <div style={{ fontSize: "9px", color: "var(--text-tertiary)" }}>{s.label}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Evergreen vs Trending */}
+                    {deepDiveResult.contentSustainability && (
+                      <div style={card}>
+                        <h4 style={{ fontSize: "13px", fontWeight: "600", marginBottom: "10px" }}>🌱 Content Sustainability</h4>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+                          <div style={{ flex: 1, height: "16px", borderRadius: "8px", background: "var(--bg-tertiary)", overflow: "hidden", display: "flex" }}>
+                            <div style={{ width: `${deepDiveResult.contentSustainability.evergreenPercentage}%`, background: "linear-gradient(90deg, #10b981, #34d399)", height: "100%" }} />
+                            <div style={{ width: `${deepDiveResult.contentSustainability.trendingPercentage}%`, background: "linear-gradient(90deg, #f59e0b, #fbbf24)", height: "100%" }} />
+                          </div>
+                          <span style={{ fontSize: "11px", whiteSpace: "nowrap" }}>🌿 {deepDiveResult.contentSustainability.evergreenPercentage}% / 🔥 {deepDiveResult.contentSustainability.trendingPercentage}%</span>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                          <div>
+                            <div style={{ fontSize: "11px", fontWeight: "600", color: "#10b981", marginBottom: "4px" }}>🌿 Evergreen Topics</div>
+                            {(deepDiveResult.contentSustainability.evergreenTopics || []).slice(0, 4).map((t, i) => (
+                              <div key={i} style={{ padding: "4px 8px", borderRadius: "6px", background: "rgba(16,185,129,0.06)", fontSize: "10px", marginBottom: "2px", color: "var(--text-secondary)" }}>
+                                <strong>{t.topic}</strong> · {t.searchVolume} volume · {t.competition} comp
+                              </div>
+                            ))}
+                          </div>
+                          <div>
+                            <div style={{ fontSize: "11px", fontWeight: "600", color: "#f59e0b", marginBottom: "4px" }}>🔥 Trending Now</div>
+                            {(deepDiveResult.contentSustainability.trendingTopics || []).slice(0, 4).map((t, i) => (
+                              <div key={i} style={{ padding: "4px 8px", borderRadius: "6px", background: "rgba(245,158,11,0.06)", fontSize: "10px", marginBottom: "2px", color: "var(--text-secondary)" }}>
+                                <strong>{t.topic}</strong> · Window: {t.window} · {t.urgency} urgency
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Sub-Niches + Content Pillars */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                      {deepDiveResult.subNiches && (
+                        <div style={card}>
+                          <h4 style={{ fontSize: "12px", fontWeight: "600", marginBottom: "6px" }}>🪤 Sub-Niches</h4>
+                          {deepDiveResult.subNiches.map((s, i) => (
+                            <div key={i} style={{ padding: "6px 8px", borderRadius: "6px", background: "var(--bg-tertiary, rgba(255,255,255,0.02))", marginBottom: "4px" }}>
+                              <div style={{ fontSize: "11px", fontWeight: "600" }}>{s.name} <span style={{ fontSize: "9px", color: s.profitability === "high" ? "#10b981" : "var(--text-tertiary)" }}>· {s.profitability} profit</span></div>
+                              <div style={{ fontSize: "9px", color: "var(--text-tertiary)" }}>💡 {s.gapOpportunity}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {deepDiveResult.contentPillars && (
+                        <div style={card}>
+                          <h4 style={{ fontSize: "12px", fontWeight: "600", marginBottom: "6px" }}>🏛️ Content Pillars</h4>
+                          {deepDiveResult.contentPillars.map((p, i) => (
+                            <div key={i} style={{ padding: "6px 8px", borderRadius: "6px", background: "var(--bg-tertiary, rgba(255,255,255,0.02))", marginBottom: "4px" }}>
+                              <div style={{ fontSize: "11px", fontWeight: "600" }}>{p.pillar} <span style={{ fontSize: "9px", color: p.evergreen ? "#10b981" : "#f59e0b" }}>{p.evergreen ? "🌿 evergreen" : "🔥 trending"}</span></div>
+                              <div style={{ fontSize: "9px", color: "var(--text-tertiary)" }}>📅 {p.frequency}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Monetization */}
+                    {deepDiveResult.monetization && (
+                      <div style={card}>
+                        <h4 style={{ fontSize: "13px", fontWeight: "600", marginBottom: "8px" }}>💰 Monetization Paths</h4>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginBottom: "10px" }}>
+                          {(deepDiveResult.monetization.primaryRevenue || []).map((r, i) => (
+                            <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", borderRadius: "6px", background: "var(--bg-tertiary, rgba(255,255,255,0.02))" }}>
+                              <span style={{ fontSize: "11px", fontWeight: "600" }}>{r.method}</span>
+                              <span style={{ fontSize: "11px", color: "#10b981" }}>{r.potential}</span>
+                            </div>
+                          ))}
+                        </div>
+                        {deepDiveResult.monetization.totalPotential && (
+                          <div style={{ textAlign: "center", padding: "8px", borderRadius: "8px", background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.15)" }}>
+                            <div style={{ fontSize: "10px", color: "var(--text-tertiary)" }}>Est. monthly at 100K subs</div>
+                            <div style={{ fontSize: "18px", fontWeight: "700", color: "#10b981" }}>{deepDiveResult.monetization.totalPotential}</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Verdict */}
+                    {deepDiveResult.verdict && (
+                      <div style={{ ...card, borderTop: `3px solid ${deepDiveResult.verdict.recommendation?.includes("yes") ? "#10b981" : "#f59e0b"}` }}>
+                        <div style={{ fontSize: "14px", fontWeight: "700", marginBottom: "4px", textTransform: "capitalize" }}>
+                          {deepDiveResult.verdict.recommendation?.includes("strong_yes") ? "✅✅" : deepDiveResult.verdict.recommendation?.includes("yes") ? "✅" : "⚠️"} Verdict: {deepDiveResult.verdict.recommendation?.replace("_", " ")}
+                        </div>
+                        <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: "0 0 8px 0" }}>{deepDiveResult.verdict.summary}</p>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", fontSize: "10px" }}>
+                          <div style={{ padding: "6px", borderRadius: "6px", background: "rgba(16,185,129,0.06)" }}>🎯 Best for: {deepDiveResult.verdict.bestFor}</div>
+                          <div style={{ padding: "6px", borderRadius: "6px", background: "rgba(239,68,68,0.06)" }}>⚠️ Avoid if: {deepDiveResult.verdict.avoidIf}</div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+                {deepDiveResult?.error && <div style={{ color: "#f87171", fontSize: "12px" }}>❌ {deepDiveResult.error}</div>}
+              </>
+            )}
+
+            {/* Discovery Form */}
+            {!deepDiveNiche && (
+              <>
+                <div style={card}>
+                  <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "8px" }}>🧭 Niche Discovery Lab</h3>
+                  <p style={{ fontSize: "12px", color: "var(--text-tertiary)", marginBottom: "16px" }}>
+                    Don&apos;t know what channel to build? Enter your interests and constraints. The AI will find profitable niches with full breakdowns.
+                  </p>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "12px" }}>
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <label style={{ fontSize: "10px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase" }}>Interests (comma separated, or leave blank for open exploration)</label>
+                      <input value={nicheInterests} onChange={e => setNicheInterests(e.target.value)}
+                        placeholder="tech, fitness, finance, cooking, gaming..." style={{ ...inputStyle, marginTop: "4px" }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "10px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase" }}>Content Style</label>
+                      <select value={nicheStyle} onChange={e => setNicheStyle(e.target.value)} style={{ ...inputStyle, marginTop: "4px" }}>
+                        <option value="any">🎲 Any style</option>
+                        <option value="faceless">👻 Faceless</option>
+                        <option value="talking_head">🗣️ Talking head</option>
+                        <option value="tutorial">📚 Tutorial</option>
+                        <option value="entertainment">🎬 Entertainment</option>
+                        <option value="documentary">🎥 Documentary</option>
+                        <option value="shorts">⚡ Shorts focused</option>
+                        <option value="automated">🤖 Automated/AI</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "10px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase" }}>Budget</label>
+                      <select value={nicheBudget} onChange={e => setNicheBudget(e.target.value)} style={{ ...inputStyle, marginTop: "4px" }}>
+                        <option value="zero">📱 Zero (phone only)</option>
+                        <option value="low">💵 Low (basic setup)</option>
+                        <option value="medium">💰 Medium (good gear)</option>
+                        <option value="high">🎥 High (pro setup)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "10px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase" }}>Primary Goal</label>
+                      <select value={nicheGoal} onChange={e => setNicheGoal(e.target.value)} style={{ ...inputStyle, marginTop: "4px" }}>
+                        <option value="revenue">💲 Max revenue</option>
+                        <option value="growth">🚀 Fast growth</option>
+                        <option value="passive">🏖️ Passive income</option>
+                        <option value="authority">🏆 Build authority</option>
+                        <option value="fun">🎨 Creative freedom</option>
+                      </select>
+                    </div>
+                  </div>
+                  <button style={btnPrimary} onClick={discoverNiches} disabled={nicheLoading}>
+                    {nicheLoading ? "⏳ Discovering niches..." : "🧭 Discover Niches"}
+                  </button>
+                </div>
+
+                {/* Results */}
+                {nicheResults && !nicheResults.error && nicheResults.niches && (
+                  <>
+                    {nicheResults.marketTrends && (
+                      <div style={{ ...card, padding: "12px 16px", borderLeft: "3px solid #22d3ee" }}>
+                        <div style={{ fontSize: "11px", fontWeight: "600", marginBottom: "4px" }}>📈 Market Trends</div>
+                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                          {nicheResults.marketTrends.map((t, i) => (
+                            <span key={i} style={{ padding: "3px 10px", borderRadius: "8px", fontSize: "10px", background: "var(--bg-tertiary, rgba(255,255,255,0.04))", color: "var(--text-secondary)" }}>{t}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                      {nicheResults.niches.map((n, i) => (
+                        <div key={i} style={{ ...card, padding: "16px", cursor: "pointer", borderLeft: `3px solid ${n.profitabilityScore >= 80 ? "#10b981" : n.profitabilityScore >= 60 ? "#f59e0b" : "#ef4444"}`, transition: "transform 0.15s" }}
+                          onClick={() => runDeepDive(n.name)}
+                          onMouseEnter={e => { e.currentTarget.style.transform = "translateX(4px)"; }}
+                          onMouseLeave={e => { e.currentTarget.style.transform = ""; }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: "8px" }}>
+                            <div>
+                              <div style={{ fontSize: "14px", fontWeight: "700" }}>{n.name}</div>
+                              <div style={{ fontSize: "11px", color: "var(--text-secondary)", marginTop: "2px" }}>{n.description}</div>
+                            </div>
+                            <div style={{ textAlign: "center", minWidth: "50px" }}>
+                              <div style={{ fontSize: "22px", fontWeight: "800", color: n.profitabilityScore >= 80 ? "#10b981" : n.profitabilityScore >= 60 ? "#f59e0b" : "#ef4444" }}>{n.profitabilityScore}</div>
+                              <div style={{ fontSize: "8px", color: "var(--text-tertiary)" }}>PROFIT</div>
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "8px" }}>
+                            <span style={{ padding: "2px 8px", borderRadius: "6px", fontSize: "9px", background: "rgba(59,130,246,0.1)", color: "#3b82f6" }}>CPM: {n.estimatedCPM}</span>
+                            <span style={{ padding: "2px 8px", borderRadius: "6px", fontSize: "9px", background: "rgba(139,92,246,0.1)", color: "#a78bfa" }}>{n.competitionLevel} competition</span>
+                            <span style={{ padding: "2px 8px", borderRadius: "6px", fontSize: "9px", background: "rgba(16,185,129,0.1)", color: "#10b981" }}>{n.growthPotential} growth</span>
+                            <span style={{ padding: "2px 8px", borderRadius: "6px", fontSize: "9px", background: "rgba(245,158,11,0.1)", color: "#f59e0b" }}>⏱ {n.timeToMonetization}</span>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+                            <div style={{ flex: 1, height: "6px", borderRadius: "3px", background: "var(--bg-tertiary)", overflow: "hidden", display: "flex" }}>
+                              <div style={{ width: `${n.evergreen}%`, background: "#10b981", height: "100%" }} />
+                              <div style={{ width: `${n.trending}%`, background: "#f59e0b", height: "100%" }} />
+                            </div>
+                            <span style={{ fontSize: "9px", color: "var(--text-tertiary)", whiteSpace: "nowrap" }}>🌿{n.evergreen}% / 🔥{n.trending}%</span>
+                          </div>
+                          <div style={{ fontSize: "10px", color: "#22d3ee", fontWeight: "500" }}>Click for deep-dive analysis →</div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {nicheResults?.error && <div style={{ color: "#f87171", fontSize: "12px" }}>❌ {nicheResults.error}</div>}
+              </>
+            )}
           </div>
         )}
       </div>
