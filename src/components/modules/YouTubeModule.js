@@ -24,6 +24,7 @@ const TABS = [
   { id: "analytics", label: "Analytics", icon: "📊" },
   { id: "channels", label: "Channels", icon: "📺" },
   { id: "creation", label: "Creation Tools", icon: "🎨" },
+  { id: "publish", label: "Upload & Publish", icon: "🚀" },
 ];
 
 /* ─── Pipeline Stages ─── */
@@ -121,6 +122,18 @@ export default function YouTubeModule() {
   const [suggestions, setSuggestions] = useState(null);
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [learningData, setLearningData] = useState({ templateScores: {}, topFormats: [], insights: [] });
+  // Phase 8 state — upload, sync, thumbnail gen, pipeline
+  const [uploadForm, setUploadForm] = useState({ title: "", description: "", tags: "", privacyStatus: "private", categoryId: "22", scheduledAt: "" });
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [uploadResult, setUploadResult] = useState(null);
+  const [calSyncLoading, setCalSyncLoading] = useState(false);
+  const [calSyncResult, setCalSyncResult] = useState(null);
+  const [thumbGenPrompt, setThumbGenPrompt] = useState("");
+  const [thumbGenImages, setThumbGenImages] = useState(null);
+  const [thumbGenLoading, setThumbGenLoading] = useState(false);
+  const [pipelineRunning, setPipelineRunning] = useState(false);
+  const [pipelineStep, setPipelineStep] = useState("");
 
   /* ─── Firestore Load ─── */
   useEffect(() => {
@@ -399,6 +412,157 @@ export default function YouTubeModule() {
     }
 
     saveLearningData({ ...learningData, templateScores: scores, topFormats, insights });
+  };
+
+  /* ─── Phase 8: YouTube Upload ─── */
+  const uploadVideo = async () => {
+    if (!uploadFile || !uploadForm.title.trim() || !googleAccessToken) return;
+    setUploadLoading(true);
+    setUploadResult(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", uploadFile);
+      fd.append("title", uploadForm.title.trim());
+      fd.append("description", uploadForm.description);
+      fd.append("tags", uploadForm.tags);
+      fd.append("privacyStatus", uploadForm.privacyStatus);
+      fd.append("categoryId", uploadForm.categoryId);
+      if (uploadForm.scheduledAt) fd.append("scheduledAt", uploadForm.scheduledAt);
+
+      const res = await fetch("/api/youtube/upload", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${googleAccessToken}` },
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Upload failed: ${res.status}`);
+      setUploadResult(data);
+    } catch (e) {
+      console.error("Upload failed:", e);
+      setUploadResult({ error: e.message });
+    }
+    setUploadLoading(false);
+  };
+
+  /* ─── Phase 8: Google Calendar Sync ─── */
+  const syncToGoogleCalendar = async () => {
+    if (!googleAccessToken || calendarEvents.length === 0) return;
+    setCalSyncLoading(true);
+    setCalSyncResult(null);
+    try {
+      const eventsToSync = calendarEvents.filter(e => new Date(e.date) >= new Date()).map(e => ({
+        title: e.title,
+        date: e.date,
+        type: e.type,
+        channelName: channels.find(c => c.id === e.channelId)?.name || "",
+      }));
+
+      if (eventsToSync.length === 0) {
+        setCalSyncResult({ error: "No upcoming events to sync" });
+        setCalSyncLoading(false);
+        return;
+      }
+
+      const res = await fetch("/api/youtube/calendar-sync", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${googleAccessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ events: eventsToSync }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Sync failed: ${res.status}`);
+      setCalSyncResult(data);
+    } catch (e) {
+      console.error("Calendar sync failed:", e);
+      setCalSyncResult({ error: e.message });
+    }
+    setCalSyncLoading(false);
+  };
+
+  /* ─── Phase 8: Thumbnail Generation ─── */
+  const generateThumbnailImage = async () => {
+    if (!thumbGenPrompt.trim()) return;
+    setThumbGenLoading(true);
+    setThumbGenImages(null);
+    try {
+      const res = await fetch("/api/youtube/thumbnail-generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: thumbGenPrompt.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Generation failed: ${res.status}`);
+      setThumbGenImages(data);
+    } catch (e) {
+      console.error("Thumbnail gen failed:", e);
+      setThumbGenImages({ error: e.message });
+    }
+    setThumbGenLoading(false);
+  };
+
+  /* ─── Phase 8: Automated Pipeline ─── */
+  const runAutoPipeline = async (topic, channelId) => {
+    if (!topic.trim()) return;
+    setPipelineRunning(true);
+
+    try {
+      // Step 1: Generate script
+      setPipelineStep("Generating script...");
+      const scriptRes = await fetch("/api/youtube/script", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic, type: "longform", length: "10min", style: "educational" }),
+      });
+      const scriptData = await scriptRes.json();
+
+      // Step 2: Optimize SEO
+      setPipelineStep("Optimizing SEO...");
+      const seoRes = await fetch("/api/youtube/seo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: topic }),
+      });
+      const seoData = await seoRes.json();
+
+      // Step 3: Generate thumbnail concept
+      setPipelineStep("Designing thumbnail...");
+      const thumbRes = await fetch("/api/youtube/thumbnail-analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: seoData.titles?.[0]?.text || topic }),
+      });
+      const thumbData = await thumbRes.json();
+
+      // Step 4: Add to pipeline
+      setPipelineStep("Adding to pipeline...");
+      const pipelineItem = {
+        id: `pi_${Date.now()}`,
+        title: seoData.titles?.[0]?.text || topic,
+        stage: "scripting",
+        channelId: channelId || null,
+        createdAt: new Date().toISOString(),
+        generatedScript: scriptData.script,
+        seoData: { titles: seoData.titles, tags: seoData.tags, description: seoData.description },
+        thumbnailConcept: thumbData.concepts?.[0] || null,
+      };
+      const updated = [...pipelineItems, pipelineItem];
+      setPipelineItems(updated);
+      try {
+        const ref = doc(db, "users", user.uid, "youtube", "pipeline");
+        await setDoc(ref, { items: updated, updatedAt: new Date().toISOString() }, { merge: true });
+      } catch (e) { console.error("Save pipeline:", e); }
+
+      setPipelineStep("✅ Pipeline complete!");
+      setTimeout(() => setPipelineStep(""), 3000);
+    } catch (e) {
+      console.error("Pipeline failed:", e);
+      setPipelineStep(`❌ Failed: ${e.message}`);
+      setTimeout(() => setPipelineStep(""), 5000);
+    }
+
+    setPipelineRunning(false);
   };
 
   /* ─── Channel Actions ─── */
@@ -1628,6 +1792,198 @@ export default function YouTubeModule() {
   );
 
   /* ═══════════════════════════════════════════════════════
+     RENDER: Upload & Publish Tab
+     ═══════════════════════════════════════════════════════ */
+  const renderPublishTab = () => (
+    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      {/* Automated Pipeline */}
+      <div style={{ ...card, borderTop: "3px solid #8b5cf6" }}>
+        <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "8px" }}>⚡ Automated Pipeline</h3>
+        <p style={{ fontSize: "12px", color: "var(--text-tertiary, rgba(255,255,255,0.5))", marginBottom: "16px" }}>
+          Enter a topic and the system will auto-generate: script → SEO-optimized title → thumbnail concept → add to pipeline. One click from idea to production.
+        </p>
+        <div style={{ display: "flex", gap: "8px" }}>
+          <input
+            id="pipeline-topic"
+            placeholder="Enter video topic..."
+            style={inputStyle}
+            onKeyDown={e => { if (e.key === "Enter" && !pipelineRunning) runAutoPipeline(e.target.value, channels[0]?.id); }}
+          />
+          <select
+            id="pipeline-channel"
+            style={{ ...inputStyle, maxWidth: "180px" }}
+            defaultValue=""
+          >
+            <option value="">No channel</option>
+            {channels.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <button style={btnPrimary} disabled={pipelineRunning} onClick={() => {
+            const topic = document.getElementById("pipeline-topic")?.value;
+            const channelId = document.getElementById("pipeline-channel")?.value;
+            if (topic) runAutoPipeline(topic, channelId);
+          }}>
+            {pipelineRunning ? "⏳ Running..." : "🚀 Run Pipeline"}
+          </button>
+        </div>
+        {pipelineStep && (
+          <div style={{ marginTop: "12px", padding: "10px 14px", borderRadius: "8px", background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.2)", fontSize: "12px", color: "#a78bfa" }}>
+            {pipelineStep}
+          </div>
+        )}
+      </div>
+
+      {/* Upload to YouTube */}
+      <div style={card}>
+        <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "8px" }}>📤 Upload to YouTube</h3>
+        <p style={{ fontSize: "12px", color: "var(--text-tertiary, rgba(255,255,255,0.5))", marginBottom: "16px" }}>
+          Upload videos directly to YouTube. Supports scheduled publishing and privacy settings.
+        </p>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase" }}>Video File *</label>
+            <input type="file" accept="video/*" onChange={e => setUploadFile(e.target.files?.[0] || null)}
+              style={{ ...inputStyle, marginTop: "4px", padding: "8px" }} />
+            {uploadFile && (
+              <div style={{ fontSize: "10px", color: "var(--text-tertiary, rgba(255,255,255,0.5))", marginTop: "4px" }}>
+                {uploadFile.name} · {(uploadFile.size / 1024 / 1024).toFixed(1)} MB
+              </div>
+            )}
+          </div>
+          <div>
+            <label style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase" }}>Title *</label>
+            <input value={uploadForm.title} onChange={e => setUploadForm(p => ({ ...p, title: e.target.value }))}
+              placeholder="Video title" style={{ ...inputStyle, marginTop: "4px" }} />
+          </div>
+          <div>
+            <label style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase" }}>Privacy</label>
+            <select value={uploadForm.privacyStatus} onChange={e => setUploadForm(p => ({ ...p, privacyStatus: e.target.value }))}
+              style={{ ...inputStyle, marginTop: "4px" }}>
+              <option value="private">🔒 Private</option>
+              <option value="unlisted">🔗 Unlisted</option>
+              <option value="public">🌍 Public</option>
+            </select>
+          </div>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase" }}>Description</label>
+            <textarea value={uploadForm.description} onChange={e => setUploadForm(p => ({ ...p, description: e.target.value }))}
+              placeholder="Video description..." rows={3} style={{ ...inputStyle, marginTop: "4px", resize: "vertical" }} />
+          </div>
+          <div>
+            <label style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase" }}>Tags (comma separated)</label>
+            <input value={uploadForm.tags} onChange={e => setUploadForm(p => ({ ...p, tags: e.target.value }))}
+              placeholder="tag1, tag2, tag3" style={{ ...inputStyle, marginTop: "4px" }} />
+          </div>
+          <div>
+            <label style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase" }}>Schedule Publish</label>
+            <input type="datetime-local" value={uploadForm.scheduledAt} onChange={e => setUploadForm(p => ({ ...p, scheduledAt: e.target.value }))}
+              style={{ ...inputStyle, marginTop: "4px" }} />
+          </div>
+        </div>
+
+        <button style={btnPrimary} onClick={uploadVideo} disabled={uploadLoading || !uploadFile || !uploadForm.title.trim()}>
+          {uploadLoading ? "⏳ Uploading..." : "📤 Upload to YouTube"}
+        </button>
+
+        {uploadResult && !uploadResult.error && (
+          <div style={{ marginTop: "12px", padding: "14px", borderRadius: "10px", background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
+            <div style={{ fontWeight: "600", color: "#10b981", marginBottom: "6px" }}>✅ Upload Successful!</div>
+            <div style={{ fontSize: "12px", color: "var(--text-secondary, rgba(255,255,255,0.7))" }}>
+              <div>Title: {uploadResult.title}</div>
+              <div>Status: {uploadResult.status}</div>
+              {uploadResult.publishAt && <div>Scheduled: {fmtDate(uploadResult.publishAt)}</div>}
+              <a href={uploadResult.url} target="_blank" rel="noopener noreferrer" style={{ color: "#60a5fa", textDecoration: "none" }}>
+                {uploadResult.url} →
+              </a>
+            </div>
+          </div>
+        )}
+
+        {uploadResult?.error && (
+          <div style={{ marginTop: "12px", padding: "14px", borderRadius: "10px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171", fontSize: "12px" }}>
+            ❌ {uploadResult.error}
+          </div>
+        )}
+      </div>
+
+      {/* Thumbnail Image Generator */}
+      <div style={card}>
+        <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "8px" }}>🎨 Thumbnail Generator</h3>
+        <p style={{ fontSize: "12px", color: "var(--text-tertiary, rgba(255,255,255,0.5))", marginBottom: "16px" }}>
+          Generate actual thumbnail images using AI. Describe what you want and the system will create it.
+        </p>
+
+        <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
+          <input value={thumbGenPrompt} onChange={e => setThumbGenPrompt(e.target.value)}
+            placeholder="Describe your thumbnail (e.g. 'person looking shocked at a laptop with money flying around')..."
+            style={inputStyle}
+            onKeyDown={e => { if (e.key === "Enter") generateThumbnailImage(); }}
+          />
+          <button style={btnPrimary} onClick={generateThumbnailImage} disabled={thumbGenLoading || !thumbGenPrompt.trim()}>
+            {thumbGenLoading ? "⏳ Generating..." : "🎨 Generate"}
+          </button>
+        </div>
+
+        {thumbGenImages && !thumbGenImages.error && (
+          <div>
+            {thumbGenImages.images && thumbGenImages.images.length > 0 ? (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "12px" }}>
+                {thumbGenImages.images.map((img, i) => (
+                  <div key={i} style={{ borderRadius: "10px", overflow: "hidden", border: "1px solid var(--border, rgba(255,255,255,0.08))" }}>
+                    <img
+                      src={`data:${img.mimeType};base64,${img.data}`}
+                      alt={`Thumbnail ${i + 1}`}
+                      style={{ width: "100%", display: "block" }}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ padding: "14px", borderRadius: "10px", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", fontSize: "12px", color: "#f59e0b" }}>
+                {thumbGenImages.fallbackMessage || thumbGenImages.description || "No images generated. Try the Thumbnail Studio for concept-based design briefs."}
+              </div>
+            )}
+          </div>
+        )}
+
+        {thumbGenImages?.error && (
+          <div style={{ padding: "14px", borderRadius: "10px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171", fontSize: "12px" }}>
+            ❌ {thumbGenImages.error}
+          </div>
+        )}
+      </div>
+
+      {/* Calendar Sync */}
+      <div style={card}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <h3 style={{ fontSize: "16px", fontWeight: "600" }}>📱 Sync to Google Calendar</h3>
+            <p style={{ fontSize: "12px", color: "var(--text-tertiary, rgba(255,255,255,0.5))", marginTop: "4px" }}>
+              Push your upload schedule to Google Calendar so you can see it on your phone. Creates a &quot;YouTube Uploads&quot; calendar with reminders.
+            </p>
+          </div>
+          <button style={btnPrimary} onClick={syncToGoogleCalendar} disabled={calSyncLoading || calendarEvents.length === 0}>
+            {calSyncLoading ? "⏳ Syncing..." : `📱 Sync ${calendarEvents.filter(e => new Date(e.date) >= new Date()).length} Events`}
+          </button>
+        </div>
+
+        {calSyncResult && !calSyncResult.error && (
+          <div style={{ marginTop: "12px", padding: "14px", borderRadius: "10px", background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
+            <div style={{ fontWeight: "600", color: "#10b981", marginBottom: "6px" }}>✅ Synced {calSyncResult.synced}/{calSyncResult.total} events to &quot;{calSyncResult.calendarName}&quot;</div>
+            <div style={{ fontSize: "11px", color: "var(--text-tertiary, rgba(255,255,255,0.5))" }}>Open Google Calendar on your phone to see them.</div>
+          </div>
+        )}
+
+        {calSyncResult?.error && (
+          <div style={{ marginTop: "12px", padding: "14px", borderRadius: "10px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171", fontSize: "12px" }}>
+            ❌ {calSyncResult.error}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  /* ═══════════════════════════════════════════════════════
      RENDER: Add Channel Modal
      ═══════════════════════════════════════════════════════ */
   const renderAddModal = () => (
@@ -1702,6 +2058,7 @@ export default function YouTubeModule() {
       {activeTab === "analytics" && renderAnalyticsTab()}
       {activeTab === "channels" && renderChannelsTab()}
       {activeTab === "creation" && renderCreationTab()}
+      {activeTab === "publish" && renderPublishTab()}
 
       {/* Modals */}
       {showAddModal && renderAddModal()}
