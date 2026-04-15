@@ -101,6 +101,16 @@ export default function YouTubeFactoryTab({ channels }) {
   const [nbHealth, setNbHealth] = useState(null);
   const [storageStatus, setStorageStatus] = useState(null);
 
+  /* ── Command Center State ── */
+  const [nicheResults, setNicheResults] = useState(null);
+  const [nicheCategory, setNicheCategory] = useState("");
+  const [nicheLoading, setNicheLoading] = useState(false);
+  const [topicResults, setTopicResults] = useState(null);
+  const [topicNiche, setTopicNiche] = useState("");
+  const [topicLoading, setTopicLoading] = useState(false);
+  const [autoRunning, setAutoRunning] = useState(false);
+  const [autoResults, setAutoResults] = useState(null);
+
   /* ── API Helpers ── */
   const api = async (route, body) => {
     const res = await fetch(`/api/factory/${route}`, {
@@ -231,8 +241,39 @@ export default function YouTubeFactoryTab({ channels }) {
     setStorageStatus(data);
   };
 
+  /* ── Command Center Actions ── */
+  const discoverNiches = async () => {
+    setNicheLoading(true);
+    setNicheResults(null);
+    const data = await api("orchestrator", { action: "niche-discover", category: nicheCategory || undefined, count: 5 });
+    setNicheResults(data.niches);
+    setNicheLoading(false);
+  };
+  const generateTopics = async () => {
+    if (!topicNiche) return;
+    setTopicLoading(true);
+    setTopicResults(null);
+    const data = await api("orchestrator", { action: "topic-generate", niche: topicNiche, count: 10 });
+    setTopicResults(data.topics);
+    setTopicLoading(false);
+  };
+  const runFullPipeline = async (pipelineId) => {
+    setAutoRunning(true);
+    setAutoResults(null);
+    const data = await api("orchestrator", { action: "run-full", pipelineId });
+    setAutoResults(data);
+    setAutoRunning(false);
+    await loadPipelines();
+  };
+  const runStep = async (pipelineId, step) => {
+    const data = await api("orchestrator", { action: "run-step", pipelineId, step });
+    await loadPipelines();
+    return data;
+  };
+
   /* ── Sub-tabs ── */
   const subTabs = [
+    { id: "command", icon: "🎯", label: "Command" },
     { id: "pipeline", icon: "🏭", label: "Pipelines" },
     { id: "schedule", icon: "📅", label: "Schedules" },
     { id: "knowledge", icon: "🧠", label: "Knowledge" },
@@ -624,6 +665,144 @@ export default function YouTubeFactoryTab({ channels }) {
                   <div style={{ fontSize: "9px", color: "var(--text-tertiary)", marginTop: "2px" }}>{s.prompt?.slice(0, 80)}...</div>
                 </div>
               ))}
+            </div>
+          )}
+        </>
+      )}
+      {/* ── COMMAND CENTER ── */}
+      {subTab === "command" && (
+        <>
+          {/* Niche Discovery */}
+          <div style={{ ...card, borderTop: "3px solid #f59e0b" }}>
+            <h4 style={{ fontSize: "13px", fontWeight: "600", marginBottom: "4px" }}>🧭 Niche Discovery</h4>
+            <p style={{ fontSize: "10px", color: "var(--text-tertiary)", marginBottom: "8px" }}>
+              AI analyzes search volume, competition, CPM, and automation compatibility to find profitable niches.
+            </p>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <input placeholder="Category filter (e.g. Sports, Tech, Finance) or leave blank" value={nicheCategory} onChange={e => setNicheCategory(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
+              <button style={btnPrimary} onClick={discoverNiches} disabled={nicheLoading}>
+                {nicheLoading ? "⏳ Analyzing..." : "🧭 Discover"}
+              </button>
+            </div>
+          </div>
+
+          {nicheResults?.niches && (
+            <div style={card}>
+              {nicheResults.topPick && (
+                <div style={{ padding: "8px", borderRadius: "8px", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.2)", marginBottom: "8px" }}>
+                  <div style={{ fontSize: "11px", fontWeight: "700", color: "#f59e0b" }}>⭐ Top Pick: {nicheResults.topPick.name}</div>
+                  <div style={{ fontSize: "9px", color: "var(--text-tertiary)" }}>{nicheResults.topPick.reason}</div>
+                </div>
+              )}
+              {nicheResults.niches.map((n, i) => (
+                <div key={i} style={{ padding: "8px", borderBottom: "1px solid var(--border, rgba(255,255,255,0.04))", marginBottom: "4px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ fontSize: "12px", fontWeight: "700" }}>{n.name}</div>
+                    <div style={{ display: "flex", gap: "4px" }}>
+                      <span style={{ fontSize: "8px", padding: "1px 5px", borderRadius: "4px", background: n.type === "evergreen" ? "rgba(16,185,129,0.2)" : "rgba(59,130,246,0.2)", color: n.type === "evergreen" ? "#10b981" : "#3b82f6" }}>{n.type}</span>
+                      <span style={{ fontSize: "8px", padding: "1px 5px", borderRadius: "4px", background: "rgba(139,92,246,0.2)", color: "#8b5cf6" }}>Auto: {n.automationScore}/10</span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: "9px", color: "var(--text-tertiary)", marginTop: "2px" }}>
+                    CPM: {n.estimatedCPM} · Search: {n.searchVolume} · Competition: {n.competition} · {n.recommendedFrequency}
+                  </div>
+                  <div style={{ fontSize: "9px", color: "var(--text-secondary)", marginTop: "2px" }}>{n.whyProfitable}</div>
+                  <div style={{ display: "flex", gap: "4px", marginTop: "4px" }}>
+                    <button style={{ ...btnSecondary, fontSize: "8px", padding: "2px 6px" }} onClick={() => { setTopicNiche(n.name); setSubTab("command"); }}>
+                      📝 Gen Topics
+                    </button>
+                    <button style={{ ...btnSecondary, fontSize: "8px", padding: "2px 6px" }} onClick={() => { setNewPipe(p => ({ ...p, niche: n.name })); setSubTab("pipeline"); }}>
+                      🏭 Create Pipeline
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Topic Generation */}
+          <div style={{ ...card, borderTop: "3px solid #3b82f6" }}>
+            <h4 style={{ fontSize: "13px", fontWeight: "600", marginBottom: "4px" }}>📝 Topic Generator</h4>
+            <p style={{ fontSize: "10px", color: "var(--text-tertiary)", marginBottom: "8px" }}>
+              Generate SEO-optimized video topics for a specific niche.
+            </p>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <input placeholder="Niche (e.g. NBA highlights, AI tools, crypto)" value={topicNiche} onChange={e => setTopicNiche(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
+              <button style={btnPrimary} onClick={generateTopics} disabled={topicLoading || !topicNiche}>
+                {topicLoading ? "⏳ Generating..." : "📝 Generate"}
+              </button>
+            </div>
+          </div>
+
+          {topicResults?.topics && (
+            <div style={card}>
+              <h4 style={{ fontSize: "12px", fontWeight: "600", marginBottom: "6px" }}>📋 Generated Topics</h4>
+              {topicResults.topics.map((t, i) => (
+                <div key={i} style={{ padding: "6px 0", borderBottom: "1px solid var(--border, rgba(255,255,255,0.04))" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
+                    <div style={{ fontSize: "11px", fontWeight: "600", flex: 1 }}>{t.title}</div>
+                    <div style={{ display: "flex", gap: "3px", flexShrink: 0 }}>
+                      <span style={{ fontSize: "7px", padding: "1px 4px", borderRadius: "3px", background: t.estimatedViews === "viral" ? "rgba(239,68,68,0.2)" : t.estimatedViews === "high" ? "rgba(16,185,129,0.2)" : "rgba(107,114,128,0.2)", color: t.estimatedViews === "viral" ? "#ef4444" : t.estimatedViews === "high" ? "#10b981" : "#6b7280" }}>{t.estimatedViews}</span>
+                      <span style={{ fontSize: "7px", padding: "1px 4px", borderRadius: "3px", background: "rgba(59,130,246,0.2)", color: "#3b82f6" }}>{t.type}</span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: "8px", color: "#f59e0b", marginTop: "1px" }}>"{t.hook}"</div>
+                  <div style={{ display: "flex", gap: "4px", marginTop: "3px" }}>
+                    <button style={{ ...btnSecondary, fontSize: "7px", padding: "1px 5px" }} onClick={() => { setNewPipe(p => ({ ...p, topic: t.title, niche: topicNiche })); setSubTab("pipeline"); }}>
+                      🏭 Create Pipeline
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Autonomous Runner */}
+          <div style={{ ...card, borderTop: "3px solid #ef4444" }}>
+            <h4 style={{ fontSize: "13px", fontWeight: "600", marginBottom: "4px" }}>🤖 Autonomous Runner</h4>
+            <p style={{ fontSize: "10px", color: "var(--text-tertiary)", marginBottom: "8px" }}>
+              Select a pipeline and execute all steps autonomously — script → voice → visuals → compose.
+            </p>
+            {pipelines.length === 0 && (
+              <button style={btnSecondary} onClick={loadPipelines}>📋 Load Pipelines First</button>
+            )}
+            {pipelines.filter(p => p.state !== "COMPLETE" && p.state !== "CANCELLED").map(p => (
+              <div key={p.pipelineId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--border, rgba(255,255,255,0.04))" }}>
+                <div>
+                  <div style={{ fontSize: "11px", fontWeight: "600" }}>{p.topic}</div>
+                  <div style={{ fontSize: "8px", color: "var(--text-tertiary)" }}>{p.state?.replace(/_/g, " ")} · {p.progress}%</div>
+                </div>
+                <div style={{ display: "flex", gap: "4px" }}>
+                  <button style={{ ...btnSecondary, fontSize: "8px", padding: "3px 8px" }} onClick={() => runStep(p.pipelineId)} disabled={autoRunning}>
+                    ▶ Next Step
+                  </button>
+                  <button style={{ ...btnPrimary, fontSize: "8px", padding: "3px 8px" }} onClick={() => runFullPipeline(p.pipelineId)} disabled={autoRunning}>
+                    {autoRunning ? "⏳ Running..." : "🚀 Full Auto"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {autoResults && (
+            <div style={{ ...card, borderLeft: `3px solid ${autoResults.completed ? "#10b981" : "#ef4444"}` }}>
+              <div style={{ fontSize: "12px", fontWeight: "700", marginBottom: "4px" }}>
+                {autoResults.completed ? "✅ Pipeline Complete" : "⚠️ Pipeline Stopped"}
+              </div>
+              <div style={{ fontSize: "10px", color: "var(--text-tertiary)" }}>
+                State: {autoResults.state} · Progress: {autoResults.progress}% · Cost: ${(autoResults.totalCost || 0).toFixed(2)}
+              </div>
+              {autoResults.error && (
+                <div style={{ fontSize: "10px", color: "#ef4444", marginTop: "4px" }}>Error: {autoResults.error}</div>
+              )}
+              <div style={{ marginTop: "6px", fontSize: "9px" }}>
+                {Object.entries(autoResults.results || {}).map(([step, data]) => (
+                  <div key={step} style={{ padding: "2px 0" }}>
+                    <span style={{ fontWeight: "600" }}>{step}:</span>{" "}
+                    {data.error ? <span style={{ color: "#ef4444" }}>❌ {data.error}</span> : <span style={{ color: "#10b981" }}>✅ ${(data.cost || 0).toFixed(3)}</span>}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </>
