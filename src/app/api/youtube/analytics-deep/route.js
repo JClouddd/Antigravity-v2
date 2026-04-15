@@ -22,11 +22,12 @@ export async function GET(request) {
     const accessToken = authHeader.replace("Bearer ", "");
 
     const baseUrl = "https://youtubeanalytics.googleapis.com/v2/reports";
-    const channelFilter = channelId ? `channel==${channelId}` : "";
+    // Use specific channel ID when provided, otherwise fall back to MINE (active channel)
+    const channelTarget = channelId ? `channel==${channelId}` : "channel==MINE";
 
     /* ── 1. Overview metrics ── */
     const overviewRes = await fetch(
-      `${baseUrl}?ids=channel==MINE&startDate=${startDate}&endDate=${endDate}&metrics=views,estimatedMinutesWatched,averageViewDuration,subscribersGained,subscribersLost,likes,dislikes,comments,shares&dimensions=day&sort=day`,
+      `${baseUrl}?ids=${channelTarget}&startDate=${startDate}&endDate=${endDate}&metrics=views,estimatedMinutesWatched,averageViewDuration,subscribersGained,subscribersLost,likes,dislikes,comments,shares&dimensions=day&sort=day`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
 
@@ -37,7 +38,7 @@ export async function GET(request) {
 
     /* ── 2. Traffic sources ── */
     const trafficRes = await fetch(
-      `${baseUrl}?ids=channel==MINE&startDate=${startDate}&endDate=${endDate}&metrics=views,estimatedMinutesWatched&dimensions=insightTrafficSourceType&sort=-views`,
+      `${baseUrl}?ids=${channelTarget}&startDate=${startDate}&endDate=${endDate}&metrics=views,estimatedMinutesWatched&dimensions=insightTrafficSourceType&sort=-views`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
 
@@ -53,7 +54,7 @@ export async function GET(request) {
 
     /* ── 3. Demographics ── */
     const demoRes = await fetch(
-      `${baseUrl}?ids=channel==MINE&startDate=${startDate}&endDate=${endDate}&metrics=viewerPercentage&dimensions=ageGroup,gender`,
+      `${baseUrl}?ids=${channelTarget}&startDate=${startDate}&endDate=${endDate}&metrics=viewerPercentage&dimensions=ageGroup,gender`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
 
@@ -69,7 +70,7 @@ export async function GET(request) {
 
     /* ── 4. Top videos ── */
     const topRes = await fetch(
-      `${baseUrl}?ids=channel==MINE&startDate=${startDate}&endDate=${endDate}&metrics=views,estimatedMinutesWatched,averageViewDuration,likes,subscribersGained&dimensions=video&sort=-views&maxResults=10`,
+      `${baseUrl}?ids=${channelTarget}&startDate=${startDate}&endDate=${endDate}&metrics=views,estimatedMinutesWatched,averageViewDuration,likes,subscribersGained&dimensions=video&sort=-views&maxResults=10`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
 
@@ -88,7 +89,7 @@ export async function GET(request) {
 
     /* ── 5. Geography ── */
     const geoRes = await fetch(
-      `${baseUrl}?ids=channel==MINE&startDate=${startDate}&endDate=${endDate}&metrics=views&dimensions=country&sort=-views&maxResults=15`,
+      `${baseUrl}?ids=${channelTarget}&startDate=${startDate}&endDate=${endDate}&metrics=views&dimensions=country&sort=-views&maxResults=15`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
 

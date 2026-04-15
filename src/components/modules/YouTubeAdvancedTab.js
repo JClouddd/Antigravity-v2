@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 /* ─── Shared styles ─── */
 const card = {
@@ -38,6 +38,32 @@ const fmtNumber = (n) => {
  */
 export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
   const [activePanel, setActivePanel] = useState(null);
+
+  // Multi-channel context
+  const [managedChannels, setManagedChannels] = useState([]);
+  const [activeWriteChannel, setActiveWriteChannel] = useState(null);
+  const [selectedChannelId, setSelectedChannelId] = useState("");
+  const [channelDiscoveryDone, setChannelDiscoveryDone] = useState(false);
+
+  // Discover all managed channels on mount
+  const discoverChannels = useCallback(async () => {
+    if (!googleAccessToken) return;
+    try {
+      const res = await fetch("/api/youtube/channels-mine", {
+        headers: { Authorization: `Bearer ${googleAccessToken}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setManagedChannels(data.channels || []);
+      setActiveWriteChannel(data.activeChannel || null);
+      if (data.activeChannelId && !selectedChannelId) {
+        setSelectedChannelId(data.activeChannelId);
+      }
+    } catch (e) { console.error("Channel discovery failed:", e); }
+    setChannelDiscoveryDone(true);
+  }, [googleAccessToken, selectedChannelId]);
+
+  useEffect(() => { discoverChannels(); }, [discoverChannels]);
 
   // Deep Analytics
   const [deepAnalytics, setDeepAnalytics] = useState(null);
@@ -111,7 +137,8 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
       const days = Number(analyticsPeriod);
       const startDate = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
       const endDate = new Date().toISOString().split("T")[0];
-      const res = await fetch(`/api/youtube/analytics-deep?startDate=${startDate}&endDate=${endDate}`, {
+      const channelParam = selectedChannelId ? `&channelId=${selectedChannelId}` : "";
+      const res = await fetch(`/api/youtube/analytics-deep?startDate=${startDate}&endDate=${endDate}${channelParam}`, {
         headers: { Authorization: `Bearer ${googleAccessToken}` },
       });
       if (!res.ok) throw new Error(`API ${res.status}`);
@@ -180,7 +207,8 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
     if (!googleAccessToken) return;
     setPlaylistsLoading(true);
     try {
-      const res = await fetch("/api/youtube/playlists", {
+      const channelParam = selectedChannelId ? `?channelId=${selectedChannelId}` : "";
+      const res = await fetch(`/api/youtube/playlists${channelParam}`, {
         headers: { Authorization: `Bearer ${googleAccessToken}` },
       });
       if (!res.ok) throw new Error(`API ${res.status}`);
@@ -347,10 +375,34 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
     { id: "batch", icon: "⚡", label: "Batch Editor", desc: "Update 50 videos at once", color: "#f97316" },
   ];
 
+  // Channel Selector bar (shown inside panels)
+  const channelSelector = managedChannels.length > 1 ? (
+    <div style={{ ...card, padding: "10px 14px", display: "flex", alignItems: "center", gap: "10px", borderTop: "2px solid #3b82f6" }}>
+      <span style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-tertiary)", whiteSpace: "nowrap" }}>📺 Channel:</span>
+      <select value={selectedChannelId} onChange={e => setSelectedChannelId(e.target.value)} style={{ ...inputStyle, maxWidth: "250px" }}>
+        {managedChannels.map(ch => (
+          <option key={ch.channelId} value={ch.channelId}>
+            {ch.title} {ch.channelId === activeWriteChannel?.channelId ? "(active — writes here)" : "(read-only)"}
+          </option>
+        ))}
+      </select>
+      {selectedChannelId !== activeWriteChannel?.channelId && (
+        <span style={{ fontSize: "10px", color: "#f59e0b", padding: "2px 8px", borderRadius: "6px", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.2)", whiteSpace: "nowrap" }}>⚠️ Read-only — uploads/comments target {activeWriteChannel?.title || "default channel"}</span>
+      )}
+    </div>
+  ) : managedChannels.length === 1 ? (
+    <div style={{ ...card, padding: "8px 14px", display: "flex", alignItems: "center", gap: "8px", borderTop: "2px solid #10b981" }}>
+      <img src={managedChannels[0].thumbnail} alt="" style={{ width: "20px", height: "20px", borderRadius: "50%" }} />
+      <span style={{ fontSize: "11px", fontWeight: "600" }}>{managedChannels[0].title}</span>
+      <span style={{ fontSize: "10px", color: "#10b981" }}>✅ Single channel — all operations target here</span>
+    </div>
+  ) : null;
+
   if (activePanel) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
         <button onClick={() => setActivePanel(null)} style={{ ...btnSecondary, alignSelf: "flex-start" }}>← Back to Pro Tools</button>
+        {channelSelector}
 
         {/* ─── Deep Analytics Panel ─── */}
         {activePanel === "analytics" && (
@@ -1037,6 +1089,24 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
           Premium features for serious YouTube creators. Deep analytics, competitor intel, viral prediction, and cross-platform content repurposing.
         </p>
       </div>
+
+      {/* Channel Status */}
+      {channelDiscoveryDone && (
+        <div style={{ ...card, padding: "12px 16px", display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          <span style={{ fontSize: "12px", fontWeight: "600" }}>📺 {managedChannels.length} channel{managedChannels.length !== 1 ? "s" : ""} detected</span>
+          {managedChannels.map(ch => (
+            <div key={ch.channelId} style={{ display: "flex", alignItems: "center", gap: "4px", padding: "3px 10px", borderRadius: "8px",
+              background: ch.channelId === selectedChannelId ? "rgba(59,130,246,0.1)" : "var(--bg-tertiary, rgba(255,255,255,0.04))",
+              border: `1px solid ${ch.channelId === selectedChannelId ? "rgba(59,130,246,0.3)" : "var(--border, rgba(255,255,255,0.06))"}`,
+              cursor: "pointer",
+            }} onClick={() => setSelectedChannelId(ch.channelId)}>
+              {ch.thumbnail && <img src={ch.thumbnail} alt="" style={{ width: "16px", height: "16px", borderRadius: "50%" }} />}
+              <span style={{ fontSize: "11px", fontWeight: ch.channelId === selectedChannelId ? "600" : "400" }}>{ch.title}</span>
+              {ch.channelId === activeWriteChannel?.channelId && <span style={{ fontSize: "8px", color: "#10b981" }}>✍️</span>}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "12px" }}>
         {tools.map(tool => (

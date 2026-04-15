@@ -38,10 +38,12 @@ export async function GET(request) {
     }
 
     // Otherwise list all playlists
-    const res = await fetch(
-      "https://www.googleapis.com/youtube/v3/playlists?part=snippet,contentDetails,status&mine=true&maxResults=50",
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
+    // Support channelId param to list a specific channel's playlists (vs. mine=true default)
+    const channelId = searchParams.get("channelId");
+    const playlistsUrl = channelId
+      ? `https://www.googleapis.com/youtube/v3/playlists?part=snippet,contentDetails,status&channelId=${channelId}&maxResults=50`
+      : "https://www.googleapis.com/youtube/v3/playlists?part=snippet,contentDetails,status&mine=true&maxResults=50";
+    const res = await fetch(playlistsUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
 
     if (!res.ok) {
       const err = await res.text();
