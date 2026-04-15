@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useAuth } from "@/lib/AuthContext";
 
 /* ─── Shared styles ─── */
 const card = {
@@ -37,6 +38,7 @@ const fmtNumber = (n) => {
  * Deep analytics, competitor tracking, viral score, comments, playlists, repurposing.
  */
 export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
+  const { user } = useAuth();
   const [activePanel, setActivePanel] = useState(null);
 
   // Multi-channel context
@@ -146,6 +148,17 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
   const [forkBranches, setForkBranches] = useState(4);
   const [forkResult, setForkResult] = useState(null);
   const [forkLoading, setForkLoading] = useState(false);
+
+  // ROI Tracker
+  const [roiCosts, setRoiCosts] = useState([]);
+  const [roiSummary, setRoiSummary] = useState(null);
+  const [roiLoading, setRoiLoading] = useState(false);
+  const [costForm, setCostForm] = useState({ category: "equipment", description: "", amount: "" });
+
+  // Smart Recommendations
+  const [smartRecs, setSmartRecs] = useState(null);
+  const [smartLoading, setSmartLoading] = useState(false);
+  const [recsHistory, setRecsHistory] = useState(null);
 
   /* ─── API Calls ─── */
   const fetchDeepAnalytics = async () => {
@@ -427,6 +440,84 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
     setForkLoading(false);
   };
 
+  const logCost = async () => {
+    if (!user?.uid || !costForm.amount) return;
+    setRoiLoading(true);
+    try {
+      const res = await fetch("/api/youtube/roi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "log-cost", userId: user.uid, ...costForm, amount: Number(costForm.amount) }),
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      setCostForm(prev => ({ ...prev, description: "", amount: "" }));
+      await fetchCosts();
+    } catch (e) { console.error(e); }
+    setRoiLoading(false);
+  };
+
+  const fetchCosts = async () => {
+    if (!user?.uid) return;
+    try {
+      const res = await fetch("/api/youtube/roi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "get-costs", userId: user.uid, limit: 50 }),
+      });
+      if (res.ok) { const data = await res.json(); setRoiCosts(data.costs || []); }
+    } catch (e) { console.error(e); }
+  };
+
+  const runROISummary = async () => {
+    if (!user?.uid) return;
+    setRoiLoading(true);
+    setRoiSummary(null);
+    try {
+      const res = await fetch("/api/youtube/roi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "summary", userId: user.uid }),
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      setRoiSummary(await res.json());
+    } catch (e) { setRoiSummary({ error: e.message }); }
+    setRoiLoading(false);
+  };
+
+  const generateSmartRecs = async () => {
+    if (!user?.uid) return;
+    setSmartLoading(true);
+    setSmartRecs(null);
+    try {
+      const res = await fetch("/api/youtube/smart-recs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "generate", userId: user.uid }),
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      setSmartRecs(await res.json());
+    } catch (e) { setSmartRecs({ error: e.message }); }
+    setSmartLoading(false);
+  };
+
+  const submitFeedback = async (recId, helpful) => {
+    if (!user?.uid) return;
+    try {
+      await fetch("/api/youtube/smart-recs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "feedback", userId: user.uid, recId, helpful }),
+      });
+      // Visual feedback
+      setSmartRecs(prev => ({
+        ...prev,
+        recommendations: prev.recommendations?.map(r =>
+          r.id === recId ? { ...r, _feedback: helpful ? "helpful" : "not_helpful" } : r
+        ),
+      }));
+    } catch (e) { console.error(e); }
+  };
+
   /* ─── Premium Tools Grid ─── */
   const tools = [
     { id: "analytics", icon: "📈", label: "Deep Analytics", desc: "Watch time, retention, traffic sources, demographics", color: "#3b82f6" },
@@ -441,6 +532,8 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
     { id: "batch", icon: "⚡", label: "Batch Editor", desc: "Update 50 videos at once", color: "#f97316" },
     { id: "niche", icon: "🧭", label: "Niche Lab", desc: "Discover profitable niches with AI analysis", color: "#22d3ee" },
     { id: "fork", icon: "🔮", label: "Decision Fork", desc: "Simulate parallel strategies and compare", color: "#e879f9" },
+    { id: "roi", icon: "💰", label: "ROI Tracker", desc: "Cost vs return per video/channel", color: "#10b981" },
+    { id: "brain", icon: "🧠", label: "Smart Intel", desc: "Self-learning AI recommendations", color: "#f43f5e" },
   ];
 
   // Channel Selector bar (shown inside panels)
@@ -1477,6 +1570,205 @@ export default function YouTubeAdvancedTab({ googleAccessToken, channels }) {
               </>
             )}
             {forkResult?.error && <div style={{ color: "#f87171", fontSize: "12px" }}>❌ {forkResult.error}</div>}
+          </div>
+        )}
+
+        {/* ─── ROI Tracker ─── */}
+        {activePanel === "roi" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            {/* Log Cost */}
+            <div style={card}>
+              <h3 style={{ fontSize: "15px", fontWeight: "600", marginBottom: "8px" }}>💰 Log Production Cost</h3>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 2fr", gap: "8px", marginBottom: "8px" }}>
+                <select value={costForm.category} onChange={e => setCostForm(prev => ({ ...prev, category: e.target.value }))} style={inputStyle}>
+                  <option value="equipment">📷 Equipment</option>
+                  <option value="editing">✂️ Editing</option>
+                  <option value="music">🎵 Music/Audio</option>
+                  <option value="talent">🎭 Talent</option>
+                  <option value="ads">📢 Ads/Promo</option>
+                  <option value="software">💻 Software</option>
+                  <option value="outsource">🤝 Outsource</option>
+                  <option value="api">⚡ API/Cloud</option>
+                  <option value="other">📦 Other</option>
+                </select>
+                <input type="number" placeholder="$ Amount" value={costForm.amount} onChange={e => setCostForm(prev => ({ ...prev, amount: e.target.value }))} style={inputStyle} />
+                <input placeholder="Description (optional)" value={costForm.description} onChange={e => setCostForm(prev => ({ ...prev, description: e.target.value }))} style={inputStyle} />
+              </div>
+              <button style={btnPrimary} onClick={logCost} disabled={roiLoading || !costForm.amount}>
+                {roiLoading ? "⏳ Logging..." : "💰 Log Cost"}
+              </button>
+            </div>
+
+            {/* Recent Costs */}
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button style={btnSecondary} onClick={fetchCosts}>📋 Load Costs</button>
+              <button style={btnPrimary} onClick={runROISummary} disabled={roiLoading}>
+                {roiLoading ? "⏳ Analyzing..." : "📊 Run P&L Analysis"}
+              </button>
+            </div>
+
+            {roiCosts.length > 0 && (
+              <div style={card}>
+                <h4 style={{ fontSize: "12px", fontWeight: "600", marginBottom: "8px" }}>📋 Recent Costs ({roiCosts.length})</h4>
+                <div style={{ maxHeight: "200px", overflow: "auto" }}>
+                  {roiCosts.slice(0, 20).map((c, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", borderBottom: "1px solid var(--border, rgba(255,255,255,0.04))" }}>
+                      <div style={{ fontSize: "11px" }}>
+                        <span style={{ fontWeight: "600" }}>{c.category}</span>
+                        {c.description && <span style={{ color: "var(--text-tertiary)", marginLeft: "6px" }}>· {c.description}</span>}
+                      </div>
+                      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                        <span style={{ fontSize: "11px", color: "#ef4444", fontWeight: "600" }}>-${c.amount.toFixed(2)}</span>
+                        <span style={{ fontSize: "9px", color: "var(--text-tertiary)" }}>{c.date}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* P&L Summary */}
+            {roiSummary && !roiSummary.error && (
+              <>
+                <div style={{ ...card, borderTop: `3px solid ${roiSummary.healthLabel === "healthy" ? "#10b981" : roiSummary.healthLabel === "watch" ? "#f59e0b" : "#ef4444"}` }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                    <h4 style={{ fontSize: "14px", fontWeight: "700" }}>📊 Profit & Loss</h4>
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ fontSize: "24px", fontWeight: "800", color: roiSummary.healthScore >= 70 ? "#10b981" : roiSummary.healthScore >= 40 ? "#f59e0b" : "#ef4444" }}>{roiSummary.healthScore}</div>
+                      <div style={{ fontSize: "8px", textTransform: "uppercase", color: "var(--text-tertiary)" }}>Health</div>
+                    </div>
+                  </div>
+                  {roiSummary.profitAndLoss && (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", marginBottom: "10px" }}>
+                      {[
+                        { label: "Revenue", value: `$${roiSummary.profitAndLoss.totalRevenue}`, color: "#10b981" },
+                        { label: "Costs", value: `$${roiSummary.profitAndLoss.totalCosts}`, color: "#ef4444" },
+                        { label: "Net", value: `$${roiSummary.profitAndLoss.netProfit}`, color: roiSummary.profitAndLoss.netProfit >= 0 ? "#10b981" : "#ef4444" },
+                      ].map((s, i) => (
+                        <div key={i} style={{ textAlign: "center", padding: "8px", borderRadius: "8px", background: "var(--bg-tertiary, rgba(255,255,255,0.02))" }}>
+                          <div style={{ fontSize: "16px", fontWeight: "700", color: s.color }}>{s.value}</div>
+                          <div style={{ fontSize: "9px", color: "var(--text-tertiary)" }}>{s.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {roiSummary.keyInsight && (
+                    <div style={{ padding: "8px", borderRadius: "8px", background: "rgba(16,185,129,0.06)", fontSize: "11px", color: "var(--text-secondary)" }}>💡 {roiSummary.keyInsight}</div>
+                  )}
+                </div>
+
+                {roiSummary.recommendations && (
+                  <div style={card}>
+                    <h4 style={{ fontSize: "12px", fontWeight: "600", marginBottom: "6px" }}>🎯 Recommendations</h4>
+                    {roiSummary.recommendations.map((r, i) => (
+                      <div key={i} style={{ padding: "6px 8px", borderRadius: "6px", background: "var(--bg-tertiary, rgba(255,255,255,0.02))", marginBottom: "4px", borderLeft: `2px solid ${r.priority === "high" ? "#ef4444" : r.priority === "medium" ? "#f59e0b" : "#10b981"}` }}>
+                        <div style={{ fontSize: "11px", fontWeight: "600" }}>{r.title}</div>
+                        <div style={{ fontSize: "9px", color: "var(--text-tertiary)" }}>{r.description} · Impact: {r.estimatedImpact}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+            {roiSummary?.error && <div style={{ color: "#f87171", fontSize: "12px" }}>❌ {roiSummary.error}</div>}
+          </div>
+        )}
+
+        {/* ─── Smart Intel ─── */}
+        {activePanel === "brain" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <div style={card}>
+              <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "4px" }}>🧠 Smart Intelligence</h3>
+              <p style={{ fontSize: "11px", color: "var(--text-tertiary)", marginBottom: "12px" }}>
+                AI that learns from your decisions. Rate recommendations to teach it what works for you.
+              </p>
+              <button style={btnPrimary} onClick={generateSmartRecs} disabled={smartLoading}>
+                {smartLoading ? "⏳ Analyzing your data..." : "🧠 Generate Recommendations"}
+              </button>
+            </div>
+
+            {smartRecs && !smartRecs.error && (
+              <>
+                {/* System Health */}
+                {smartRecs.systemHealth && (
+                  <div style={{ ...card, borderTop: "3px solid #f43f5e" }}>
+                    <h4 style={{ fontSize: "13px", fontWeight: "600", marginBottom: "8px" }}>📊 System Health</h4>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "6px" }}>
+                      {Object.entries(smartRecs.systemHealth).map(([key, val]) => (
+                        <div key={key} style={{ textAlign: "center", padding: "6px", borderRadius: "8px", background: "var(--bg-tertiary, rgba(255,255,255,0.02))" }}>
+                          <div style={{ fontSize: "16px", fontWeight: "700", color: val >= 70 ? "#10b981" : val >= 40 ? "#f59e0b" : "#ef4444" }}>{val}</div>
+                          <div style={{ fontSize: "9px", color: "var(--text-tertiary)", textTransform: "capitalize" }}>{key}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Focus */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                  {smartRecs.topPriority && (
+                    <div style={{ ...card, borderLeft: "3px solid #ef4444" }}>
+                      <div style={{ fontSize: "10px", fontWeight: "600", color: "#ef4444", marginBottom: "2px" }}>🎯 TOP PRIORITY</div>
+                      <div style={{ fontSize: "11px", color: "var(--text-secondary)" }}>{smartRecs.topPriority}</div>
+                    </div>
+                  )}
+                  {smartRecs.weeklyFocus && (
+                    <div style={{ ...card, borderLeft: "3px solid #3b82f6" }}>
+                      <div style={{ fontSize: "10px", fontWeight: "600", color: "#3b82f6", marginBottom: "2px" }}>📅 THIS WEEK</div>
+                      <div style={{ fontSize: "11px", color: "var(--text-secondary)" }}>{smartRecs.weeklyFocus}</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Learning Status */}
+                {smartRecs.learningContext && (
+                  <div style={{ ...card, padding: "8px 12px", display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "11px", color: smartRecs.learningContext.isLearning ? "#10b981" : "var(--text-tertiary)" }}>
+                      {smartRecs.learningContext.isLearning ? "🧠 Learning from " + smartRecs.learningContext.totalPastRecs + " past recommendations" : "🆕 First session — rate recommendations to start learning"}
+                    </span>
+                  </div>
+                )}
+
+                {/* Recommendations */}
+                {smartRecs.recommendations?.map((r, i) => (
+                  <div key={i} style={{ ...card, borderLeft: `3px solid ${r.priority === "critical" ? "#ef4444" : r.priority === "high" ? "#f59e0b" : "#3b82f6"}` }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: "6px" }}>
+                      <div>
+                        <div style={{ fontSize: "12px", fontWeight: "700" }}>{r.title}</div>
+                        <div style={{ fontSize: "9px", color: "var(--text-tertiary)" }}>{r.category} · {r.priority} priority · {r.confidence}% confidence</div>
+                      </div>
+                      {r.expectedImpact && (
+                        <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                          <div style={{ fontSize: "12px", fontWeight: "700", color: "#10b981" }}>{r.expectedImpact.change}</div>
+                          <div style={{ fontSize: "8px", color: "var(--text-tertiary)" }}>{r.expectedImpact.metric} in {r.expectedImpact.timeframe}</div>
+                        </div>
+                      )}
+                    </div>
+                    <p style={{ fontSize: "11px", color: "var(--text-secondary)", margin: "0 0 6px 0" }}>{r.description}</p>
+                    {r.steps && (
+                      <ol style={{ margin: "0 0 8px 0", paddingLeft: "16px" }}>
+                        {r.steps.map((s, si) => <li key={si} style={{ fontSize: "10px", color: "var(--text-tertiary)", marginBottom: "1px" }}>{s}</li>)}
+                      </ol>
+                    )}
+                    {/* Feedback */}
+                    <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                      {r._feedback ? (
+                        <span style={{ fontSize: "10px", color: r._feedback === "helpful" ? "#10b981" : "#ef4444" }}>
+                          {r._feedback === "helpful" ? "✅ Marked helpful — AI is learning" : "❌ Noted — AI will adjust"}
+                        </span>
+                      ) : (
+                        <>
+                          <span style={{ fontSize: "9px", color: "var(--text-tertiary)" }}>Helpful?</span>
+                          <button onClick={() => submitFeedback(r.id, true)} style={{ ...btnSecondary, padding: "2px 8px", fontSize: "10px" }}>👍 Yes</button>
+                          <button onClick={() => submitFeedback(r.id, false)} style={{ ...btnSecondary, padding: "2px 8px", fontSize: "10px" }}>👎 No</button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+            {smartRecs?.error && <div style={{ color: "#f87171", fontSize: "12px" }}>❌ {smartRecs.error}</div>}
           </div>
         )}
       </div>
