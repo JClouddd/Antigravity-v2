@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@fal-ai/client": "^1.9.5",
+    "@fal-ai/server-proxy": "^1.2.1",
     "@google/generative-ai": "^0.24.1",
     "date-fns": "^4.1.0",
     "firebase": "^12.12.0",

@@ -6,6 +6,7 @@ import { db } from "@/lib/firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import YouTubeAdvancedTab from "./YouTubeAdvancedTab";
 import YouTubeBuildWizard from "./YouTubeBuildWizard";
+import YouTubeFactoryTab from "./YouTubeFactoryTab";
 
 /* ─── Helpers ─── */
 const fmtNumber = (n) => {
@@ -29,6 +30,7 @@ const TABS = [
   { id: "creation", label: "Creation", icon: "🎨" },
   { id: "publish", label: "Upload", icon: "🚀" },
   { id: "pro", label: "Pro Tools", icon: "⚡" },
+  { id: "factory", label: "Factory", icon: "🏭" },
 ];
 
 /* ─── Pipeline Stages ─── */
@@ -2064,6 +2066,7 @@ export default function YouTubeModule() {
       {activeTab === "creation" && renderCreationTab()}
       {activeTab === "publish" && renderPublishTab()}
       {activeTab === "pro" && <YouTubeAdvancedTab googleAccessToken={googleAccessToken} channels={channels} />}
+      {activeTab === "factory" && <YouTubeFactoryTab channels={channels} />}
 
       {/* Modals */}
       {showAddModal && renderAddModal()}
