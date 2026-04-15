@@ -98,8 +98,21 @@ export default function YouTubeModule() {
   const [templates, setTemplates] = useState([]);
   const [nicheQuery, setNicheQuery] = useState("");
   const [nicheResults, setNicheResults] = useState(null);
+  const [nicheLoading, setNicheLoading] = useState(false);
   const [analyticsSubTab, setAnalyticsSubTab] = useState("overview");
   const [newPipelineTitle, setNewPipelineTitle] = useState("");
+  // Creation tools state
+  const [activeTool, setActiveTool] = useState(null);
+  const [scriptForm, setScriptForm] = useState({ topic: "", type: "longform", length: "10min", style: "educational" });
+  const [scriptResult, setScriptResult] = useState(null);
+  const [scriptLoading, setScriptLoading] = useState(false);
+  const [seoForm, setSeoForm] = useState({ title: "", niche: "" });
+  const [seoResult, setSeoResult] = useState(null);
+  const [seoLoading, setSeoLoading] = useState(false);
+  const [calendarEvents, setCalendarEvents] = useState([]);
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [showEventModal, setShowEventModal] = useState(false);
+  const [eventForm, setEventForm] = useState({ title: "", date: "", channelId: "", type: "longform" });
 
   /* ─── Firestore Load ─── */
   useEffect(() => {
@@ -107,6 +120,8 @@ export default function YouTubeModule() {
     loadChannels();
     loadPipeline();
     loadTemplates();
+    loadCalendar();
+    loadNicheCache();
   }, [user]);
 
   const loadChannels = async () => {
@@ -157,6 +172,117 @@ export default function YouTubeModule() {
       const ref = doc(db, "users", user.uid, "youtube", "templates");
       await setDoc(ref, { list, updatedAt: new Date().toISOString() }, { merge: true });
     } catch (e) { console.error("Save templates:", e); }
+  };
+
+  const loadCalendar = async () => {
+    try {
+      const ref = doc(db, "users", user.uid, "youtube", "calendar");
+      const snap = await getDoc(ref);
+      if (snap.exists()) setCalendarEvents(snap.data().events || []);
+    } catch (e) { console.error("Load calendar:", e); }
+  };
+
+  const saveCalendar = async (events) => {
+    setCalendarEvents(events);
+    try {
+      const ref = doc(db, "users", user.uid, "youtube", "calendar");
+      await setDoc(ref, { events, updatedAt: new Date().toISOString() }, { merge: true });
+    } catch (e) { console.error("Save calendar:", e); }
+  };
+
+  const loadNicheCache = async () => {
+    try {
+      const ref = doc(db, "users", user.uid, "youtube", "niche_cache");
+      const snap = await getDoc(ref);
+      if (snap.exists() && snap.data().results) {
+        const cached = snap.data();
+        // Only use cache if less than 24 hours old
+        if (cached.cachedAt && (Date.now() - new Date(cached.cachedAt).getTime()) < 86400000) {
+          setNicheResults(cached.results);
+          setNicheQuery(cached.query || "");
+        }
+      }
+    } catch (e) { console.error("Load niche cache:", e); }
+  };
+
+  const saveNicheCache = async (query, results) => {
+    try {
+      const ref = doc(db, "users", user.uid, "youtube", "niche_cache");
+      await setDoc(ref, { query, results, cachedAt: new Date().toISOString() }, { merge: true });
+    } catch (e) { console.error("Save niche cache:", e); }
+  };
+
+  /* ─── API Calls ─── */
+  const runNicheScan = async () => {
+    if (!nicheQuery.trim() || !googleAccessToken) return;
+    setNicheLoading(true);
+    try {
+      const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(nicheQuery.trim())}&maxResults=20`, {
+        headers: { Authorization: `Bearer ${googleAccessToken}` },
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      const data = await res.json();
+      setNicheResults(data);
+      saveNicheCache(nicheQuery.trim(), data);
+    } catch (e) {
+      console.error("Niche scan failed:", e);
+      setNicheResults({ error: e.message });
+    }
+    setNicheLoading(false);
+  };
+
+  const generateScript = async () => {
+    if (!scriptForm.topic.trim()) return;
+    setScriptLoading(true);
+    try {
+      const res = await fetch("/api/youtube/script", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(scriptForm),
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      const data = await res.json();
+      setScriptResult(data);
+    } catch (e) {
+      console.error("Script gen failed:", e);
+      setScriptResult({ error: e.message });
+    }
+    setScriptLoading(false);
+  };
+
+  const optimizeSeo = async () => {
+    if (!seoForm.title.trim()) return;
+    setSeoLoading(true);
+    try {
+      const res = await fetch("/api/youtube/seo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(seoForm),
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      const data = await res.json();
+      setSeoResult(data);
+    } catch (e) {
+      console.error("SEO opt failed:", e);
+      setSeoResult({ error: e.message });
+    }
+    setSeoLoading(false);
+  };
+
+  const addCalendarEvent = () => {
+    if (!eventForm.title.trim() || !eventForm.date) return;
+    const event = {
+      id: `ev_${Date.now()}`,
+      ...eventForm,
+      createdAt: new Date().toISOString(),
+    };
+    saveCalendar([...calendarEvents, event]);
+    setEventForm({ title: "", date: "", channelId: "", type: "longform" });
+    setShowEventModal(false);
+  };
+
+  const removeCalendarEvent = (id) => {
+    saveCalendar(calendarEvents.filter(e => e.id !== id));
   };
 
   /* ─── Channel Actions ─── */
@@ -615,7 +741,7 @@ export default function YouTubeModule() {
         <div style={card}>
           <h3 style={{ fontSize: "14px", fontWeight: "600", marginBottom: "16px" }}>🌍 Niche Scanner</h3>
           <p style={{ fontSize: "12px", color: "var(--text-tertiary, rgba(255,255,255,0.5))", marginBottom: "16px" }}>
-            Search YouTube to discover high-return niches, analyze competition, and find content gaps. Results are cached to save API quota.
+            Search YouTube to discover high-return niches. Results are cached for 24 hours to save API quota (100 units/scan).
           </p>
           <div style={{ display: "flex", gap: "8px", marginBottom: "20px" }}>
             <input
@@ -623,12 +749,70 @@ export default function YouTubeModule() {
               onChange={e => setNicheQuery(e.target.value)}
               placeholder="Enter niche keyword (e.g. 'AI automation', 'crypto trading')..."
               style={inputStyle}
+              onKeyDown={e => { if (e.key === "Enter") runNicheScan(); }}
             />
-            <button style={btnPrimary}>🔍 Scan</button>
+            <button style={btnPrimary} onClick={runNicheScan} disabled={nicheLoading || !nicheQuery.trim()}>
+              {nicheLoading ? "⏳ Scanning..." : "🔍 Scan"}
+            </button>
           </div>
-          {nicheResults ? (
-            <div>Results will appear here</div>
-          ) : (
+
+          {nicheResults && !nicheResults.error && nicheResults.summary && (
+            <>
+              {/* Summary cards */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px", marginBottom: "16px" }}>
+                {[
+                  { label: "Videos Found", value: String(nicheResults.summary.videosAnalyzed || 0), color: "#3b82f6" },
+                  { label: "Avg Views", value: fmtNumber(nicheResults.summary.avgViews), color: "#8b5cf6" },
+                  { label: "Avg Likes", value: fmtNumber(nicheResults.summary.avgLikes), color: "#10b981" },
+                  { label: "Engagement", value: `${nicheResults.summary.avgEngagement}%`, color: "#f59e0b" },
+                ].map((s, i) => (
+                  <div key={i} style={{ textAlign: "center", padding: "10px", borderRadius: "10px", background: "var(--bg-tertiary, rgba(255,255,255,0.02))", borderTop: `2px solid ${s.color}` }}>
+                    <div style={{ fontSize: "16px", fontWeight: "700", color: s.color }}>{s.value}</div>
+                    <div style={{ fontSize: "10px", color: "var(--text-tertiary, rgba(255,255,255,0.4))", marginTop: "2px" }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Video results */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "400px", overflowY: "auto" }}>
+                {(nicheResults.results || []).map((v, i) => (
+                  <div key={i} style={{
+                    padding: "10px 14px", borderRadius: "10px",
+                    background: "var(--bg-tertiary, rgba(255,255,255,0.02))",
+                    border: "1px solid var(--border, rgba(255,255,255,0.04))",
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                  }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: "500", fontSize: "12px" }}>{v.title}</div>
+                      <div style={{ display: "flex", gap: "12px", marginTop: "4px", fontSize: "10px", color: "var(--text-tertiary, rgba(255,255,255,0.4))" }}>
+                        <span>📺 {v.channelTitle}</span>
+                        <span>👁️ {fmtNumber(v.viewCount)}</span>
+                        <span>👍 {fmtNumber(v.likeCount)}</span>
+                        <span>💬 {fmtNumber(v.commentCount)}</span>
+                      </div>
+                    </div>
+                    <a href={`https://youtube.com/watch?v=${v.videoId}`} target="_blank" rel="noopener noreferrer"
+                      style={{ color: "#60a5fa", textDecoration: "none", fontSize: "11px", whiteSpace: "nowrap", marginLeft: "12px" }}>
+                      Watch →
+                    </a>
+                  </div>
+                ))}
+              </div>
+              {nicheResults.cachedAt && (
+                <div style={{ fontSize: "10px", color: "var(--text-tertiary, rgba(255,255,255,0.3))", marginTop: "8px", textAlign: "right" }}>
+                  Cached {fmtDate(nicheResults.cachedAt)}
+                </div>
+              )}
+            </>
+          )}
+
+          {nicheResults?.error && (
+            <div style={{ padding: "16px", borderRadius: "10px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171", fontSize: "12px" }}>
+              ❌ {nicheResults.error}
+            </div>
+          )}
+
+          {!nicheResults && !nicheLoading && (
             <div style={{ textAlign: "center", padding: "30px", color: "var(--text-tertiary, rgba(255,255,255,0.4))", fontSize: "13px" }}>
               Enter a niche keyword and scan to discover opportunities
             </div>
@@ -665,7 +849,13 @@ export default function YouTubeModule() {
   /* ═══════════════════════════════════════════════════════
      RENDER: Creation Tools Tab
      ═══════════════════════════════════════════════════════ */
-  const renderCreationTab = () => (
+  const renderCreationTab = () => {
+    // If a tool is active, show its full view
+    if (activeTool === "script") return renderScriptGenerator();
+    if (activeTool === "seo") return renderSeoOptimizer();
+    if (activeTool === "calendar") return renderContentCalendar();
+
+    return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       {/* Template Engine */}
       <div style={card}>
@@ -729,31 +919,310 @@ export default function YouTubeModule() {
         )}
       </div>
 
-      {/* Quick Tools Grid */}
+      {/* Quick Tools Grid — now clickable */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "12px" }}>
         {[
-          { icon: "📝", label: "Script Generator", desc: "AI-powered video scripts with hooks, sections, CTAs", color: "#8b5cf6" },
-          { icon: "🖼️", label: "Thumbnail Studio", desc: "Generate and analyze thumbnails", color: "#3b82f6" },
-          { icon: "🏷️", label: "Title & SEO", desc: "Optimize titles, tags, and descriptions", color: "#06b6d4" },
-          { icon: "🎨", label: "Media Generator", desc: "AI images and video clips", color: "#f59e0b" },
-          { icon: "📅", label: "Content Calendar", desc: "Schedule across all channels", color: "#10b981" },
-          { icon: "🤖", label: "Auto-Suggest", desc: "AI recommends topics based on trends", color: "#ef4444" },
+          { icon: "📝", label: "Script Generator", desc: "AI-powered video scripts with hooks, sections, CTAs", color: "#8b5cf6", action: () => setActiveTool("script") },
+          { icon: "🏷️", label: "Title & SEO", desc: "Optimize titles, tags, and descriptions", color: "#06b6d4", action: () => setActiveTool("seo") },
+          { icon: "📅", label: "Content Calendar", desc: "Schedule across all channels", color: "#10b981", action: () => setActiveTool("calendar") },
+          { icon: "🖼️", label: "Thumbnail Studio", desc: "Generate and analyze thumbnails", color: "#3b82f6", action: null },
+          { icon: "🎨", label: "Media Generator", desc: "AI images and video clips", color: "#f59e0b", action: null },
+          { icon: "🤖", label: "Auto-Suggest", desc: "AI recommends topics based on trends", color: "#ef4444", action: null },
         ].map((tool, i) => (
           <div key={i} style={{
             ...cardHover, padding: "20px", textAlign: "center",
             borderTop: `3px solid ${tool.color}`,
+            opacity: tool.action ? 1 : 0.6,
           }}
-            onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = `0 8px 32px ${tool.color}20`; }}
+            onClick={tool.action || undefined}
+            onMouseEnter={e => { if (tool.action) { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = `0 8px 32px ${tool.color}20`; }}}
             onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}
           >
             <div style={{ fontSize: "28px", marginBottom: "8px" }}>{tool.icon}</div>
             <div style={{ fontSize: "13px", fontWeight: "600", marginBottom: "4px" }}>{tool.label}</div>
             <div style={{ fontSize: "11px", color: "var(--text-tertiary, rgba(255,255,255,0.4))" }}>{tool.desc}</div>
+            {!tool.action && <div style={{ fontSize: "9px", color: "var(--text-tertiary, rgba(255,255,255,0.3))", marginTop: "6px" }}>Coming soon</div>}
           </div>
         ))}
       </div>
     </div>
+    );
+  };
+
+  /* ─── Script Generator Full View ─── */
+  const renderScriptGenerator = () => (
+    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <button onClick={() => setActiveTool(null)} style={{ ...btnSecondary, alignSelf: "flex-start", padding: "6px 12px" }}>← Back to Tools</button>
+
+      <div style={card}>
+        <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "16px" }}>📝 Script Generator</h3>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+          <div>
+            <label style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase" }}>Topic *</label>
+            <input value={scriptForm.topic} onChange={e => setScriptForm(p => ({ ...p, topic: e.target.value }))}
+              placeholder="e.g. How to build AI agents with Claude" style={{ ...inputStyle, marginTop: "4px" }} />
+          </div>
+          <div>
+            <label style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase" }}>Video Type</label>
+            <select value={scriptForm.type} onChange={e => setScriptForm(p => ({ ...p, type: e.target.value }))}
+              style={{ ...inputStyle, marginTop: "4px" }}>
+              {VIDEO_TYPES.map(vt => <option key={vt.id} value={vt.id}>{vt.icon} {vt.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase" }}>Target Length</label>
+            <select value={scriptForm.length} onChange={e => setScriptForm(p => ({ ...p, length: e.target.value }))}
+              style={{ ...inputStyle, marginTop: "4px" }}>
+              {["30sec", "1min", "3min", "5min", "10min", "15min", "20min", "30min"].map(l => <option key={l} value={l}>{l}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase" }}>Style</label>
+            <select value={scriptForm.style} onChange={e => setScriptForm(p => ({ ...p, style: e.target.value }))}
+              style={{ ...inputStyle, marginTop: "4px" }}>
+              {["educational", "entertainment", "storytelling", "tutorial", "review", "commentary", "vlog"].map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <button style={btnPrimary} onClick={generateScript} disabled={scriptLoading || !scriptForm.topic.trim()}>
+          {scriptLoading ? "⏳ Generating Script..." : "✨ Generate Script"}
+        </button>
+      </div>
+
+      {scriptResult && !scriptResult.error && (
+        <div style={card}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+            <h3 style={{ fontSize: "14px", fontWeight: "600" }}>📜 Generated Script</h3>
+            <span style={{ fontSize: "10px", color: "var(--text-tertiary, rgba(255,255,255,0.4))" }}>
+              Model: {scriptResult.model} · {fmtDate(scriptResult.generatedAt)}
+            </span>
+          </div>
+          <pre style={{
+            whiteSpace: "pre-wrap", fontSize: "12px", lineHeight: "1.6",
+            color: "var(--text-secondary, rgba(255,255,255,0.8))",
+            background: "var(--bg-tertiary, rgba(255,255,255,0.02))",
+            padding: "16px", borderRadius: "10px", maxHeight: "500px", overflowY: "auto",
+            border: "1px solid var(--border, rgba(255,255,255,0.04))",
+          }}>
+            {scriptResult.script}
+          </pre>
+        </div>
+      )}
+
+      {scriptResult?.error && (
+        <div style={{ padding: "16px", borderRadius: "10px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171", fontSize: "12px" }}>
+          ❌ {scriptResult.error}
+        </div>
+      )}
+    </div>
   );
+
+  /* ─── SEO Optimizer Full View ─── */
+  const renderSeoOptimizer = () => (
+    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <button onClick={() => setActiveTool(null)} style={{ ...btnSecondary, alignSelf: "flex-start", padding: "6px 12px" }}>← Back to Tools</button>
+
+      <div style={card}>
+        <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "16px" }}>🏷️ Title & SEO Optimizer</h3>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+          <div>
+            <label style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase" }}>Working Title *</label>
+            <input value={seoForm.title} onChange={e => setSeoForm(p => ({ ...p, title: e.target.value }))}
+              placeholder="e.g. How I Made $10K with AI Automation" style={{ ...inputStyle, marginTop: "4px" }} />
+          </div>
+          <div>
+            <label style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase" }}>Niche</label>
+            <input value={seoForm.niche} onChange={e => setSeoForm(p => ({ ...p, niche: e.target.value }))}
+              placeholder="e.g. AI, tech, automation" style={{ ...inputStyle, marginTop: "4px" }} />
+          </div>
+        </div>
+
+        <button style={btnPrimary} onClick={optimizeSeo} disabled={seoLoading || !seoForm.title.trim()}>
+          {seoLoading ? "⏳ Optimizing..." : "✨ Optimize"}
+        </button>
+      </div>
+
+      {seoResult && !seoResult.error && (
+        <>
+          {/* Title suggestions */}
+          {seoResult.titles && (
+            <div style={card}>
+              <h3 style={{ fontSize: "14px", fontWeight: "600", marginBottom: "12px" }}>📋 Title Suggestions</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                {seoResult.titles.map((t, i) => (
+                  <div key={i} style={{
+                    padding: "10px 14px", borderRadius: "10px",
+                    background: "var(--bg-tertiary, rgba(255,255,255,0.02))",
+                    border: "1px solid var(--border, rgba(255,255,255,0.04))",
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                  }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: "500", fontSize: "13px" }}>{t.text}</div>
+                      <div style={{ fontSize: "10px", color: "var(--text-tertiary, rgba(255,255,255,0.4))", marginTop: "2px" }}>{t.reason}</div>
+                    </div>
+                    <span style={{
+                      padding: "2px 10px", borderRadius: "12px", fontSize: "11px", fontWeight: "600",
+                      background: t.score >= 90 ? "rgba(16,185,129,0.15)" : t.score >= 80 ? "rgba(59,130,246,0.15)" : "rgba(245,158,11,0.15)",
+                      color: t.score >= 90 ? "#10b981" : t.score >= 80 ? "#3b82f6" : "#f59e0b",
+                    }}>{t.score}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tags */}
+          {seoResult.tags && (
+            <div style={card}>
+              <h3 style={{ fontSize: "14px", fontWeight: "600", marginBottom: "12px" }}>🏷️ Recommended Tags</h3>
+              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                {seoResult.tags.map((tag, i) => (
+                  <span key={i} style={{
+                    padding: "4px 12px", borderRadius: "20px", fontSize: "12px",
+                    background: "var(--bg-tertiary, rgba(255,255,255,0.04))",
+                    border: "1px solid var(--border, rgba(255,255,255,0.08))",
+                  }}>{tag}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Analysis */}
+          {seoResult.analysis && (
+            <div style={card}>
+              <h3 style={{ fontSize: "14px", fontWeight: "600", marginBottom: "12px" }}>📊 SEO Analysis</h3>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginBottom: "12px" }}>
+                {[
+                  { label: "Search Volume", value: seoResult.analysis.searchVolume, color: "#3b82f6" },
+                  { label: "Competition", value: seoResult.analysis.competition, color: "#f59e0b" },
+                  { label: "Opportunity", value: `${seoResult.analysis.opportunity}/100`, color: "#10b981" },
+                ].map((s, i) => (
+                  <div key={i} style={{ textAlign: "center", padding: "12px", borderRadius: "10px", background: "var(--bg-tertiary, rgba(255,255,255,0.02))", borderTop: `2px solid ${s.color}` }}>
+                    <div style={{ fontSize: "14px", fontWeight: "700", color: s.color, textTransform: "capitalize" }}>{s.value}</div>
+                    <div style={{ fontSize: "10px", color: "var(--text-tertiary, rgba(255,255,255,0.4))", marginTop: "2px" }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+              {seoResult.analysis.tips && (
+                <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", color: "var(--text-secondary, rgba(255,255,255,0.7))" }}>
+                  {seoResult.analysis.tips.map((tip, i) => <li key={i} style={{ marginBottom: "4px" }}>{tip}</li>)}
+                </ul>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {seoResult?.error && (
+        <div style={{ padding: "16px", borderRadius: "10px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171", fontSize: "12px" }}>
+          ❌ {seoResult.error}
+        </div>
+      )}
+    </div>
+  );
+
+  /* ─── Content Calendar Full View ─── */
+  const renderContentCalendar = () => {
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const firstDay = new Date(year, month, 1).getDay();
+    const monthName = calendarMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    const days = [];
+    for (let i = 0; i < firstDay; i++) days.push(null);
+    for (let d = 1; d <= daysInMonth; d++) days.push(d);
+
+    const getEventsForDay = (day) => {
+      if (!day) return [];
+      const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      return calendarEvents.filter(e => e.date === dateStr);
+    };
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <button onClick={() => setActiveTool(null)} style={{ ...btnSecondary, padding: "6px 12px" }}>← Back to Tools</button>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <button style={btnSecondary} onClick={() => setCalendarMonth(new Date(year, month - 1, 1))}>◀</button>
+            <span style={{ fontSize: "16px", fontWeight: "600", minWidth: "160px", textAlign: "center" }}>{monthName}</span>
+            <button style={btnSecondary} onClick={() => setCalendarMonth(new Date(year, month + 1, 1))}>▶</button>
+          </div>
+          <button style={btnPrimary} onClick={() => setShowEventModal(true)}>+ Schedule Upload</button>
+        </div>
+
+        {/* Calendar grid */}
+        <div style={card}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "2px" }}>
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => (
+              <div key={d} style={{ textAlign: "center", padding: "8px", fontSize: "11px", fontWeight: "600", color: "var(--text-tertiary, rgba(255,255,255,0.4))" }}>{d}</div>
+            ))}
+            {days.map((day, i) => {
+              const events = getEventsForDay(day);
+              const isToday = day && new Date().getDate() === day && new Date().getMonth() === month && new Date().getFullYear() === year;
+              return (
+                <div key={i} style={{
+                  minHeight: "70px", padding: "4px", borderRadius: "8px",
+                  background: isToday ? "rgba(239,68,68,0.08)" : day ? "var(--bg-tertiary, rgba(255,255,255,0.02))" : "transparent",
+                  border: isToday ? "1px solid rgba(239,68,68,0.3)" : "1px solid var(--border, rgba(255,255,255,0.03))",
+                }}>
+                  {day && (
+                    <>
+                      <div style={{ fontSize: "11px", fontWeight: isToday ? "700" : "400", color: isToday ? "#f87171" : "var(--text-secondary)", padding: "2px 4px" }}>{day}</div>
+                      {events.map(ev => (
+                        <div key={ev.id} style={{
+                          fontSize: "9px", padding: "2px 4px", borderRadius: "4px", marginTop: "1px",
+                          background: "rgba(139,92,246,0.15)", color: "#a78bfa",
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          cursor: "pointer",
+                        }} title={ev.title} onClick={() => removeCalendarEvent(ev.id)}>
+                          {VIDEO_TYPES.find(vt => vt.id === ev.type)?.icon || "🎬"} {ev.title}
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Upcoming uploads */}
+        <div style={card}>
+          <h3 style={{ fontSize: "14px", fontWeight: "600", marginBottom: "12px" }}>📋 Upcoming Uploads</h3>
+          {calendarEvents.filter(e => new Date(e.date) >= new Date()).sort((a, b) => new Date(a.date) - new Date(b.date)).length === 0 ? (
+            <div style={{ textAlign: "center", padding: "20px", color: "var(--text-tertiary, rgba(255,255,255,0.4))", fontSize: "13px" }}>
+              No upcoming uploads scheduled
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              {calendarEvents.filter(e => new Date(e.date) >= new Date()).sort((a, b) => new Date(a.date) - new Date(b.date)).map(ev => (
+                <div key={ev.id} style={{
+                  padding: "8px 12px", borderRadius: "8px",
+                  background: "var(--bg-tertiary, rgba(255,255,255,0.02))",
+                  border: "1px solid var(--border, rgba(255,255,255,0.04))",
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span>{VIDEO_TYPES.find(vt => vt.id === ev.type)?.icon || "🎬"}</span>
+                    <div>
+                      <div style={{ fontSize: "12px", fontWeight: "500" }}>{ev.title}</div>
+                      <div style={{ fontSize: "10px", color: "var(--text-tertiary, rgba(255,255,255,0.4))" }}>
+                        {fmtDate(ev.date)} · {channels.find(c => c.id === ev.channelId)?.name || "No channel"}
+                      </div>
+                    </div>
+                  </div>
+                  <button style={{ ...btnSecondary, padding: "4px 8px", fontSize: "10px", color: "#ef4444" }} onClick={() => removeCalendarEvent(ev.id)}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   /* ═══════════════════════════════════════════════════════
      RENDER: Add Channel Modal
@@ -833,6 +1302,52 @@ export default function YouTubeModule() {
 
       {/* Modals */}
       {showAddModal && renderAddModal()}
+
+      {/* Schedule Event Modal */}
+      {showEventModal && (
+        <>
+          <div onClick={() => setShowEventModal(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, backdropFilter: "blur(4px)" }} />
+          <div style={{
+            position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+            width: "min(440px, 90vw)", background: "var(--bg-primary, #0f0f1a)", borderRadius: "20px",
+            border: "1px solid var(--border, rgba(255,255,255,0.08))", padding: "28px", zIndex: 1001,
+            boxShadow: "0 24px 80px rgba(0,0,0,0.6)",
+          }}>
+            <h2 style={{ fontSize: "18px", fontWeight: "700", marginBottom: "20px" }}>📅 Schedule Upload</h2>
+            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Title *</label>
+                <input value={eventForm.title} onChange={e => setEventForm(p => ({ ...p, title: e.target.value }))}
+                  placeholder="Video title" style={{ ...inputStyle, marginTop: "6px" }} />
+              </div>
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Date *</label>
+                <input type="date" value={eventForm.date} onChange={e => setEventForm(p => ({ ...p, date: e.target.value }))}
+                  style={{ ...inputStyle, marginTop: "6px" }} />
+              </div>
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Channel</label>
+                <select value={eventForm.channelId} onChange={e => setEventForm(p => ({ ...p, channelId: e.target.value }))}
+                  style={{ ...inputStyle, marginTop: "6px" }}>
+                  <option value="">— Select channel —</option>
+                  {channels.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Type</label>
+                <select value={eventForm.type} onChange={e => setEventForm(p => ({ ...p, type: e.target.value }))}
+                  style={{ ...inputStyle, marginTop: "6px" }}>
+                  {VIDEO_TYPES.map(vt => <option key={vt.id} value={vt.id}>{vt.icon} {vt.label}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: "8px", marginTop: "24px", justifyContent: "flex-end" }}>
+              <button style={btnSecondary} onClick={() => setShowEventModal(false)}>Cancel</button>
+              <button style={btnPrimary} onClick={addCalendarEvent} disabled={!eventForm.title.trim() || !eventForm.date}>Schedule</button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
