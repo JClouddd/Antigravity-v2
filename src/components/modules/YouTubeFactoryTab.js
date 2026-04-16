@@ -62,7 +62,7 @@ const PIPELINE_STATES = [
 
 export default function YouTubeFactoryTab({ channels }) {
   const { user } = useAuth();
-  const [subTab, setSubTab] = useState("pipeline");
+  const [subTab, setSubTab] = useState("command");
 
   /* ── Pipeline State ── */
   const [pipelines, setPipelines] = useState([]);
@@ -102,12 +102,17 @@ export default function YouTubeFactoryTab({ channels }) {
   const [storageStatus, setStorageStatus] = useState(null);
 
   /* ── Command Center State ── */
+  const [wizardStep, setWizardStep] = useState(1);
   const [nicheResults, setNicheResults] = useState(null);
   const [nicheCategory, setNicheCategory] = useState("");
   const [nicheLoading, setNicheLoading] = useState(false);
+  const [selectedNiche, setSelectedNiche] = useState(null);
   const [topicResults, setTopicResults] = useState(null);
   const [topicNiche, setTopicNiche] = useState("");
   const [topicLoading, setTopicLoading] = useState(false);
+  const [selectedTopic, setSelectedTopic] = useState(null);
+  const [wizardTier, setWizardTier] = useState("standard");
+  const [wizardPipelineId, setWizardPipelineId] = useState(null);
   const [autoRunning, setAutoRunning] = useState(false);
   const [autoResults, setAutoResults] = useState(null);
 
@@ -249,6 +254,11 @@ export default function YouTubeFactoryTab({ channels }) {
     setNicheResults(data.niches);
     setNicheLoading(false);
   };
+  const selectNiche = (niche) => {
+    setSelectedNiche(niche);
+    setTopicNiche(niche.name);
+    setWizardStep(3);
+  };
   const generateTopics = async () => {
     if (!topicNiche) return;
     setTopicLoading(true);
@@ -257,12 +267,31 @@ export default function YouTubeFactoryTab({ channels }) {
     setTopicResults(data.topics);
     setTopicLoading(false);
   };
+  const selectTopicAndCreate = async (topic) => {
+    setSelectedTopic(topic);
+    setWizardStep(5);
+    // Auto-create pipeline
+    const data = await api("pipeline", {
+      action: "create",
+      topic: topic.title,
+      niche: topicNiche,
+      videoTier: wizardTier,
+      channelName: channels?.[0]?.title || "",
+      channelId: channels?.[0]?.id || "",
+      reviewRequired: true,
+    });
+    if (data.pipelineId) {
+      setWizardPipelineId(data.pipelineId);
+      await loadPipelines();
+    }
+  };
   const runFullPipeline = async (pipelineId) => {
     setAutoRunning(true);
     setAutoResults(null);
-    const data = await api("orchestrator", { action: "run-full", pipelineId });
+    const data = await api("orchestrator", { action: "run-full", pipelineId: pipelineId || wizardPipelineId });
     setAutoResults(data);
     setAutoRunning(false);
+    if (data.completed) setWizardStep(6);
     await loadPipelines();
   };
   const runStep = async (pipelineId, step) => {
@@ -287,11 +316,11 @@ export default function YouTubeFactoryTab({ channels }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       {/* Header */}
-      <div style={{ ...card, borderTop: "3px solid #8b5cf6", textAlign: "center", padding: "24px" }}>
-        <div style={{ fontSize: "24px", marginBottom: "4px" }}>🏭</div>
-        <h3 style={{ fontSize: "16px", fontWeight: "700", marginBottom: "4px" }}>Video Factory</h3>
-        <p style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>
-          Autonomous video production. Create pipelines, schedule uploads, query your knowledge base.
+      <div style={{ ...card, borderTop: "3px solid #8b5cf6", textAlign: "center", padding: "24px", background: "linear-gradient(135deg, rgba(139,92,246,0.08), rgba(109,40,217,0.04))" }}>
+        <div style={{ fontSize: "24px", marginBottom: "4px" }}>⚡</div>
+        <h3 style={{ fontSize: "16px", fontWeight: "700", marginBottom: "2px" }}>RUBRIC Factory</h3>
+        <p style={{ fontSize: "10px", color: "var(--text-tertiary)", letterSpacing: "1px", textTransform: "uppercase" }}>
+          Autonomous Video Production Engine
         </p>
       </div>
 
@@ -669,139 +698,283 @@ export default function YouTubeFactoryTab({ channels }) {
           )}
         </>
       )}
-      {/* ── COMMAND CENTER ── */}
+      {/* ── RUBRIC COMMAND CENTER — GUIDED WIZARD ── */}
       {subTab === "command" && (
         <>
-          {/* Niche Discovery */}
-          <div style={{ ...card, borderTop: "3px solid #f59e0b" }}>
-            <h4 style={{ fontSize: "13px", fontWeight: "600", marginBottom: "4px" }}>🧭 Niche Discovery</h4>
-            <p style={{ fontSize: "10px", color: "var(--text-tertiary)", marginBottom: "8px" }}>
-              AI analyzes search volume, competition, CPM, and automation compatibility to find profitable niches.
-            </p>
-            <div style={{ display: "flex", gap: "8px" }}>
-              <input placeholder="Category filter (e.g. Sports, Tech, Finance) or leave blank" value={nicheCategory} onChange={e => setNicheCategory(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
-              <button style={btnPrimary} onClick={discoverNiches} disabled={nicheLoading}>
-                {nicheLoading ? "⏳ Analyzing..." : "🧭 Discover"}
-              </button>
-            </div>
-          </div>
-
-          {nicheResults?.niches && (
-            <div style={card}>
-              {nicheResults.topPick && (
-                <div style={{ padding: "8px", borderRadius: "8px", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.2)", marginBottom: "8px" }}>
-                  <div style={{ fontSize: "11px", fontWeight: "700", color: "#f59e0b" }}>⭐ Top Pick: {nicheResults.topPick.name}</div>
-                  <div style={{ fontSize: "9px", color: "var(--text-tertiary)" }}>{nicheResults.topPick.reason}</div>
-                </div>
-              )}
-              {nicheResults.niches.map((n, i) => (
-                <div key={i} style={{ padding: "8px", borderBottom: "1px solid var(--border, rgba(255,255,255,0.04))", marginBottom: "4px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ fontSize: "12px", fontWeight: "700" }}>{n.name}</div>
-                    <div style={{ display: "flex", gap: "4px" }}>
-                      <span style={{ fontSize: "8px", padding: "1px 5px", borderRadius: "4px", background: n.type === "evergreen" ? "rgba(16,185,129,0.2)" : "rgba(59,130,246,0.2)", color: n.type === "evergreen" ? "#10b981" : "#3b82f6" }}>{n.type}</span>
-                      <span style={{ fontSize: "8px", padding: "1px 5px", borderRadius: "4px", background: "rgba(139,92,246,0.2)", color: "#8b5cf6" }}>Auto: {n.automationScore}/10</span>
-                    </div>
-                  </div>
-                  <div style={{ fontSize: "9px", color: "var(--text-tertiary)", marginTop: "2px" }}>
-                    CPM: {n.estimatedCPM} · Search: {n.searchVolume} · Competition: {n.competition} · {n.recommendedFrequency}
-                  </div>
-                  <div style={{ fontSize: "9px", color: "var(--text-secondary)", marginTop: "2px" }}>{n.whyProfitable}</div>
-                  <div style={{ display: "flex", gap: "4px", marginTop: "4px" }}>
-                    <button style={{ ...btnSecondary, fontSize: "8px", padding: "2px 6px" }} onClick={() => { setTopicNiche(n.name); setSubTab("command"); }}>
-                      📝 Gen Topics
-                    </button>
-                    <button style={{ ...btnSecondary, fontSize: "8px", padding: "2px 6px" }} onClick={() => { setNewPipe(p => ({ ...p, niche: n.name })); setSubTab("pipeline"); }}>
-                      🏭 Create Pipeline
-                    </button>
-                  </div>
+          {/* Wizard Step Indicator */}
+          <div style={{ ...card, padding: "12px 16px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+              {[
+                { n: 1, icon: "🧭", label: "Discover" },
+                { n: 2, icon: "✅", label: "Pick Niche" },
+                { n: 3, icon: "📝", label: "Topics" },
+                { n: 4, icon: "⚙️", label: "Configure" },
+                { n: 5, icon: "🚀", label: "Execute" },
+                { n: 6, icon: "📊", label: "Review" },
+              ].map((s, i) => (
+                <div key={s.n} style={{ display: "flex", alignItems: "center", flex: 1 }}>
+                  <button onClick={() => setWizardStep(s.n)} style={{
+                    width: "28px", height: "28px", borderRadius: "50%", border: "none", cursor: "pointer",
+                    fontSize: "12px", fontWeight: "700", display: "flex", alignItems: "center", justifyContent: "center",
+                    background: wizardStep === s.n ? "linear-gradient(135deg, #8b5cf6, #6d28d9)" : wizardStep > s.n ? "rgba(16,185,129,0.2)" : "var(--bg-tertiary, rgba(255,255,255,0.05))",
+                    color: wizardStep === s.n ? "#fff" : wizardStep > s.n ? "#10b981" : "var(--text-tertiary)",
+                  }}>
+                    {wizardStep > s.n ? "✓" : s.n}
+                  </button>
+                  {i < 5 && <div style={{ flex: 1, height: "2px", background: wizardStep > s.n ? "#10b981" : "var(--border, rgba(255,255,255,0.06))", margin: "0 2px" }} />}
                 </div>
               ))}
             </div>
-          )}
-
-          {/* Topic Generation */}
-          <div style={{ ...card, borderTop: "3px solid #3b82f6" }}>
-            <h4 style={{ fontSize: "13px", fontWeight: "600", marginBottom: "4px" }}>📝 Topic Generator</h4>
-            <p style={{ fontSize: "10px", color: "var(--text-tertiary)", marginBottom: "8px" }}>
-              Generate SEO-optimized video topics for a specific niche.
-            </p>
-            <div style={{ display: "flex", gap: "8px" }}>
-              <input placeholder="Niche (e.g. NBA highlights, AI tools, crypto)" value={topicNiche} onChange={e => setTopicNiche(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
-              <button style={btnPrimary} onClick={generateTopics} disabled={topicLoading || !topicNiche}>
-                {topicLoading ? "⏳ Generating..." : "📝 Generate"}
-              </button>
-            </div>
-          </div>
-
-          {topicResults?.topics && (
-            <div style={card}>
-              <h4 style={{ fontSize: "12px", fontWeight: "600", marginBottom: "6px" }}>📋 Generated Topics</h4>
-              {topicResults.topics.map((t, i) => (
-                <div key={i} style={{ padding: "6px 0", borderBottom: "1px solid var(--border, rgba(255,255,255,0.04))" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
-                    <div style={{ fontSize: "11px", fontWeight: "600", flex: 1 }}>{t.title}</div>
-                    <div style={{ display: "flex", gap: "3px", flexShrink: 0 }}>
-                      <span style={{ fontSize: "7px", padding: "1px 4px", borderRadius: "3px", background: t.estimatedViews === "viral" ? "rgba(239,68,68,0.2)" : t.estimatedViews === "high" ? "rgba(16,185,129,0.2)" : "rgba(107,114,128,0.2)", color: t.estimatedViews === "viral" ? "#ef4444" : t.estimatedViews === "high" ? "#10b981" : "#6b7280" }}>{t.estimatedViews}</span>
-                      <span style={{ fontSize: "7px", padding: "1px 4px", borderRadius: "3px", background: "rgba(59,130,246,0.2)", color: "#3b82f6" }}>{t.type}</span>
-                    </div>
-                  </div>
-                  <div style={{ fontSize: "8px", color: "#f59e0b", marginTop: "1px" }}>"{t.hook}"</div>
-                  <div style={{ display: "flex", gap: "4px", marginTop: "3px" }}>
-                    <button style={{ ...btnSecondary, fontSize: "7px", padding: "1px 5px" }} onClick={() => { setNewPipe(p => ({ ...p, topic: t.title, niche: topicNiche })); setSubTab("pipeline"); }}>
-                      🏭 Create Pipeline
-                    </button>
-                  </div>
-                </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: "4px" }}>
+              {["Discover", "Pick", "Topics", "Config", "Execute", "Review"].map((l, i) => (
+                <div key={l} style={{ fontSize: "7px", color: wizardStep === i + 1 ? "#8b5cf6" : "var(--text-tertiary)", textAlign: "center", flex: 1, fontWeight: wizardStep === i + 1 ? "700" : "400" }}>{l}</div>
               ))}
             </div>
-          )}
-
-          {/* Autonomous Runner */}
-          <div style={{ ...card, borderTop: "3px solid #ef4444" }}>
-            <h4 style={{ fontSize: "13px", fontWeight: "600", marginBottom: "4px" }}>🤖 Autonomous Runner</h4>
-            <p style={{ fontSize: "10px", color: "var(--text-tertiary)", marginBottom: "8px" }}>
-              Select a pipeline and execute all steps autonomously — script → voice → visuals → compose.
-            </p>
-            {pipelines.length === 0 && (
-              <button style={btnSecondary} onClick={loadPipelines}>📋 Load Pipelines First</button>
-            )}
-            {pipelines.filter(p => p.state !== "COMPLETE" && p.state !== "CANCELLED").map(p => (
-              <div key={p.pipelineId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--border, rgba(255,255,255,0.04))" }}>
-                <div>
-                  <div style={{ fontSize: "11px", fontWeight: "600" }}>{p.topic}</div>
-                  <div style={{ fontSize: "8px", color: "var(--text-tertiary)" }}>{p.state?.replace(/_/g, " ")} · {p.progress}%</div>
-                </div>
-                <div style={{ display: "flex", gap: "4px" }}>
-                  <button style={{ ...btnSecondary, fontSize: "8px", padding: "3px 8px" }} onClick={() => runStep(p.pipelineId)} disabled={autoRunning}>
-                    ▶ Next Step
-                  </button>
-                  <button style={{ ...btnPrimary, fontSize: "8px", padding: "3px 8px" }} onClick={() => runFullPipeline(p.pipelineId)} disabled={autoRunning}>
-                    {autoRunning ? "⏳ Running..." : "🚀 Full Auto"}
-                  </button>
-                </div>
-              </div>
-            ))}
           </div>
 
-          {autoResults && (
-            <div style={{ ...card, borderLeft: `3px solid ${autoResults.completed ? "#10b981" : "#ef4444"}` }}>
-              <div style={{ fontSize: "12px", fontWeight: "700", marginBottom: "4px" }}>
-                {autoResults.completed ? "✅ Pipeline Complete" : "⚠️ Pipeline Stopped"}
+          {/* ── STEP 1: DISCOVER NICHES ── */}
+          {wizardStep === 1 && (
+            <div style={{ ...card, borderTop: "3px solid #f59e0b" }}>
+              <h4 style={{ fontSize: "14px", fontWeight: "700", marginBottom: "2px" }}>Step 1: Discover Profitable Niches</h4>
+              <p style={{ fontSize: "10px", color: "var(--text-tertiary)", marginBottom: "12px" }}>
+                AI analyzes search volume, competition, CPM, and automation compatibility to find the best opportunities.
+              </p>
+              <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
+                <input placeholder="Focus area (e.g. Sports, Tech, Finance) or leave blank for all" value={nicheCategory} onChange={e => setNicheCategory(e.target.value)} style={{ ...inputStyle, flex: 1 }} onKeyDown={e => e.key === "Enter" && discoverNiches()} />
+                <button style={btnPrimary} onClick={discoverNiches} disabled={nicheLoading}>
+                  {nicheLoading ? "⏳ Analyzing..." : "🧭 Discover Niches"}
+                </button>
               </div>
-              <div style={{ fontSize: "10px", color: "var(--text-tertiary)" }}>
-                State: {autoResults.state} · Progress: {autoResults.progress}% · Cost: ${(autoResults.totalCost || 0).toFixed(2)}
-              </div>
-              {autoResults.error && (
-                <div style={{ fontSize: "10px", color: "#ef4444", marginTop: "4px" }}>Error: {autoResults.error}</div>
+
+              {nicheResults?.niches && (
+                <>
+                  {nicheResults.topPick && (
+                    <div style={{ padding: "10px", borderRadius: "8px", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.2)", marginBottom: "12px" }}>
+                      <div style={{ fontSize: "12px", fontWeight: "700", color: "#f59e0b" }}>⭐ AI Recommendation: {nicheResults.topPick.name}</div>
+                      <div style={{ fontSize: "10px", color: "var(--text-tertiary)", marginTop: "2px" }}>{nicheResults.topPick.reason}</div>
+                    </div>
+                  )}
+                  <div style={{ fontSize: "10px", color: "var(--text-tertiary)", marginBottom: "6px" }}>Click a niche to continue →</div>
+                  {nicheResults.niches.map((n, i) => (
+                    <div key={i} onClick={() => selectNiche(n)} style={{
+                      padding: "10px", borderRadius: "8px", marginBottom: "6px", cursor: "pointer",
+                      border: selectedNiche?.name === n.name ? "2px solid #8b5cf6" : "1px solid var(--border, rgba(255,255,255,0.06))",
+                      background: selectedNiche?.name === n.name ? "rgba(139,92,246,0.08)" : "var(--bg-tertiary, rgba(255,255,255,0.02))",
+                      transition: "all 0.15s",
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{ fontSize: "13px", fontWeight: "700" }}>{n.name}</div>
+                        <div style={{ display: "flex", gap: "4px" }}>
+                          <span style={{ fontSize: "8px", padding: "2px 6px", borderRadius: "4px", background: n.type === "evergreen" ? "rgba(16,185,129,0.2)" : "rgba(59,130,246,0.2)", color: n.type === "evergreen" ? "#10b981" : "#3b82f6" }}>{n.type}</span>
+                          <span style={{ fontSize: "8px", padding: "2px 6px", borderRadius: "4px", background: "rgba(139,92,246,0.2)", color: "#8b5cf6" }}>Auto: {n.automationScore}/10</span>
+                          <span style={{ fontSize: "8px", padding: "2px 6px", borderRadius: "4px", background: "rgba(245,158,11,0.2)", color: "#f59e0b" }}>{n.estimatedCPM}</span>
+                        </div>
+                      </div>
+                      <div style={{ fontSize: "9px", color: "var(--text-tertiary)", marginTop: "3px" }}>
+                        Search: {n.searchVolume} · Competition: {n.competition} · {n.recommendedFrequency}
+                      </div>
+                      <div style={{ fontSize: "10px", color: "var(--text-secondary)", marginTop: "3px" }}>{n.whyProfitable}</div>
+                    </div>
+                  ))}
+                </>
               )}
-              <div style={{ marginTop: "6px", fontSize: "9px" }}>
-                {Object.entries(autoResults.results || {}).map(([step, data]) => (
-                  <div key={step} style={{ padding: "2px 0" }}>
-                    <span style={{ fontWeight: "600" }}>{step}:</span>{" "}
-                    {data.error ? <span style={{ color: "#ef4444" }}>❌ {data.error}</span> : <span style={{ color: "#10b981" }}>✅ ${(data.cost || 0).toFixed(3)}</span>}
-                  </div>
+            </div>
+          )}
+
+          {/* ── STEP 2: NICHE SELECTED (auto-advances to 3) ── */}
+          {wizardStep === 2 && selectedNiche && (
+            <div style={{ ...card, borderTop: "3px solid #10b981" }}>
+              <h4 style={{ fontSize: "14px", fontWeight: "700", marginBottom: "2px" }}>Step 2: Niche Selected</h4>
+              <div style={{ padding: "12px", borderRadius: "8px", background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)", marginTop: "8px" }}>
+                <div style={{ fontSize: "16px", fontWeight: "700" }}>{selectedNiche.name}</div>
+                <div style={{ fontSize: "10px", color: "var(--text-tertiary)", marginTop: "4px" }}>
+                  CPM: {selectedNiche.estimatedCPM} · Auto Score: {selectedNiche.automationScore}/10
+                </div>
+              </div>
+              <button style={{ ...btnPrimary, width: "100%", marginTop: "12px" }} onClick={() => { setTopicNiche(selectedNiche.name); setWizardStep(3); }}>
+                Continue → Generate Topics
+              </button>
+            </div>
+          )}
+
+          {/* ── STEP 3: GENERATE TOPICS ── */}
+          {wizardStep === 3 && (
+            <div style={{ ...card, borderTop: "3px solid #3b82f6" }}>
+              <h4 style={{ fontSize: "14px", fontWeight: "700", marginBottom: "2px" }}>Step 3: Generate Video Topics</h4>
+              <p style={{ fontSize: "10px", color: "var(--text-tertiary)", marginBottom: "8px" }}>
+                AI creates SEO-optimized, high-CTR video ideas for <strong style={{ color: "#8b5cf6" }}>{topicNiche}</strong>
+              </p>
+
+              {!topicResults?.topics && (
+                <button style={{ ...btnPrimary, width: "100%" }} onClick={generateTopics} disabled={topicLoading}>
+                  {topicLoading ? "⏳ Generating 10 topics..." : `📝 Generate Topics for "${topicNiche}"`}
+                </button>
+              )}
+
+              {topicResults?.topics && (
+                <>
+                  <div style={{ fontSize: "10px", color: "var(--text-tertiary)", marginBottom: "6px" }}>Click a topic to build a video →</div>
+                  {topicResults.topics.map((t, i) => (
+                    <div key={i} onClick={() => { setSelectedTopic(t); setWizardStep(4); }} style={{
+                      padding: "10px", borderRadius: "8px", marginBottom: "4px", cursor: "pointer",
+                      border: "1px solid var(--border, rgba(255,255,255,0.06))",
+                      background: "var(--bg-tertiary, rgba(255,255,255,0.02))",
+                      transition: "all 0.15s",
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
+                        <div style={{ fontSize: "12px", fontWeight: "600", flex: 1 }}>{t.title}</div>
+                        <div style={{ display: "flex", gap: "3px", flexShrink: 0 }}>
+                          <span style={{ fontSize: "8px", padding: "2px 5px", borderRadius: "3px", background: t.estimatedViews === "viral" ? "rgba(239,68,68,0.2)" : t.estimatedViews === "high" ? "rgba(16,185,129,0.2)" : "rgba(107,114,128,0.2)", color: t.estimatedViews === "viral" ? "#ef4444" : t.estimatedViews === "high" ? "#10b981" : "#6b7280" }}>{t.estimatedViews}</span>
+                          <span style={{ fontSize: "8px", padding: "2px 5px", borderRadius: "3px", background: "rgba(59,130,246,0.2)", color: "#3b82f6" }}>{t.type}</span>
+                        </div>
+                      </div>
+                      <div style={{ fontSize: "9px", color: "#f59e0b", marginTop: "2px", fontStyle: "italic" }}>"{t.hook}"</div>
+                      {t.searchKeyword && <div style={{ fontSize: "8px", color: "var(--text-tertiary)", marginTop: "2px" }}>🔍 {t.searchKeyword}</div>}
+                    </div>
+                  ))}
+                  <button style={{ ...btnSecondary, width: "100%", marginTop: "6px" }} onClick={generateTopics} disabled={topicLoading}>
+                    {topicLoading ? "⏳ Regenerating..." : "🔄 Regenerate Topics"}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── STEP 4: CONFIGURE & CREATE PIPELINE ── */}
+          {wizardStep === 4 && selectedTopic && (
+            <div style={{ ...card, borderTop: "3px solid #8b5cf6" }}>
+              <h4 style={{ fontSize: "14px", fontWeight: "700", marginBottom: "2px" }}>Step 4: Configure & Launch</h4>
+              <p style={{ fontSize: "10px", color: "var(--text-tertiary)", marginBottom: "12px" }}>
+                Choose your video quality tier, then launch the pipeline.
+              </p>
+
+              {/* Selected topic summary */}
+              <div style={{ padding: "10px", borderRadius: "8px", background: "rgba(139,92,246,0.06)", border: "1px solid rgba(139,92,246,0.15)", marginBottom: "12px" }}>
+                <div style={{ fontSize: "12px", fontWeight: "700" }}>{selectedTopic.title}</div>
+                <div style={{ fontSize: "9px", color: "#f59e0b", marginTop: "2px" }}>"{selectedTopic.hook}"</div>
+                <div style={{ fontSize: "9px", color: "var(--text-tertiary)", marginTop: "2px" }}>Niche: {topicNiche}</div>
+              </div>
+
+              {/* Tier Selection */}
+              <div style={{ fontSize: "10px", fontWeight: "600", marginBottom: "6px" }}>Video Quality Tier:</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", marginBottom: "12px" }}>
+                {TIERS.map(t => (
+                  <button key={t.id} onClick={() => setWizardTier(t.id)} style={{
+                    padding: "10px", borderRadius: "8px", cursor: "pointer", textAlign: "left",
+                    border: wizardTier === t.id ? `2px solid ${t.color}` : "1px solid var(--border, rgba(255,255,255,0.06))",
+                    background: wizardTier === t.id ? `${t.color}15` : "var(--bg-tertiary, rgba(255,255,255,0.02))",
+                    color: "var(--text-primary, #fff)",
+                  }}>
+                    <div style={{ fontSize: "12px", fontWeight: "700" }}>{t.label}</div>
+                    <div style={{ fontSize: "9px", color: "var(--text-tertiary)" }}>{t.desc}</div>
+                  </button>
                 ))}
+              </div>
+
+              <button style={{ ...btnPrimary, width: "100%", padding: "12px", fontSize: "14px" }} onClick={() => selectTopicAndCreate(selectedTopic)}>
+                🚀 Create Pipeline & Start Production
+              </button>
+            </div>
+          )}
+
+          {/* ── STEP 5: EXECUTE ── */}
+          {wizardStep === 5 && (
+            <div style={{ ...card, borderTop: "3px solid #ef4444" }}>
+              <h4 style={{ fontSize: "14px", fontWeight: "700", marginBottom: "2px" }}>Step 5: Autonomous Production</h4>
+
+              {!wizardPipelineId && (
+                <p style={{ fontSize: "10px", color: "var(--text-tertiary)" }}>Creating pipeline...</p>
+              )}
+
+              {wizardPipelineId && !autoRunning && !autoResults && (
+                <>
+                  <p style={{ fontSize: "10px", color: "var(--text-tertiary)", marginBottom: "12px" }}>
+                    Pipeline created. Click below to execute the full production: Script → Blueprint → Voice + Music → Visuals → Compose
+                  </p>
+                  <div style={{ padding: "10px", borderRadius: "8px", background: "rgba(139,92,246,0.06)", marginBottom: "12px" }}>
+                    <div style={{ fontSize: "11px", fontWeight: "600" }}>{selectedTopic?.title}</div>
+                    <div style={{ fontSize: "9px", color: "var(--text-tertiary)" }}>Niche: {topicNiche} · Tier: {wizardTier}</div>
+                  </div>
+                  <button style={{ ...btnPrimary, width: "100%", padding: "12px", fontSize: "14px", background: "linear-gradient(135deg, #ef4444, #dc2626)" }} onClick={() => runFullPipeline()}>
+                    🤖 Execute Full Autonomous Pipeline
+                  </button>
+                </>
+              )}
+
+              {autoRunning && (
+                <div style={{ textAlign: "center", padding: "24px" }}>
+                  <div style={{ fontSize: "32px", marginBottom: "8px", animation: "pulse 2s infinite" }}>🤖</div>
+                  <div style={{ fontSize: "13px", fontWeight: "600" }}>RUBRIC Engine Running...</div>
+                  <div style={{ fontSize: "10px", color: "var(--text-tertiary)", marginTop: "4px" }}>
+                    Generating script → blueprint → voice → music → subtitles → images → video → compose
+                  </div>
+                  <div style={{ width: "100%", height: "4px", borderRadius: "2px", background: "var(--bg-tertiary)", marginTop: "12px", overflow: "hidden" }}>
+                    <div style={{ height: "100%", background: "linear-gradient(90deg, #8b5cf6, #3b82f6, #10b981)", width: "60%", borderRadius: "2px", animation: "progress 3s ease-in-out infinite" }} />
+                  </div>
+                </div>
+              )}
+
+              {autoResults && (
+                <div style={{ padding: "12px", borderRadius: "8px", background: autoResults.completed ? "rgba(16,185,129,0.06)" : "rgba(239,68,68,0.06)", border: `1px solid ${autoResults.completed ? "rgba(16,185,129,0.2)" : "rgba(239,68,68,0.2)"}`, marginTop: "8px" }}>
+                  <div style={{ fontSize: "14px", fontWeight: "700", marginBottom: "6px" }}>
+                    {autoResults.completed ? "✅ Production Complete!" : "⚠️ Production Paused"}
+                  </div>
+                  <div style={{ fontSize: "10px", color: "var(--text-tertiary)", marginBottom: "8px" }}>
+                    State: {autoResults.state} · Progress: {autoResults.progress}% · Total Cost: ${(autoResults.totalCost || 0).toFixed(2)}
+                  </div>
+                  {autoResults.error && (
+                    <div style={{ fontSize: "10px", color: "#ef4444", marginBottom: "8px" }}>Error: {autoResults.error}</div>
+                  )}
+                  <div style={{ fontSize: "10px" }}>
+                    {Object.entries(autoResults.results || {}).map(([step, data]) => (
+                      <div key={step} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: "1px solid var(--border, rgba(255,255,255,0.04))" }}>
+                        <span style={{ fontWeight: "600" }}>{step.replace(/_/g, " ")}</span>
+                        {data.error ? <span style={{ color: "#ef4444" }}>❌ {data.error}</span> : <span style={{ color: "#10b981" }}>✅ ${(data.cost || 0).toFixed(3)}</span>}
+                      </div>
+                    ))}
+                  </div>
+                  {autoResults.completed && (
+                    <button style={{ ...btnPrimary, width: "100%", marginTop: "8px" }} onClick={() => setWizardStep(6)}>
+                      Continue → Review & Publish
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── STEP 6: REVIEW & PUBLISH ── */}
+          {wizardStep === 6 && (
+            <div style={{ ...card, borderTop: "3px solid #10b981" }}>
+              <h4 style={{ fontSize: "14px", fontWeight: "700", marginBottom: "2px" }}>Step 6: Review & Publish</h4>
+              <p style={{ fontSize: "10px", color: "var(--text-tertiary)", marginBottom: "12px" }}>
+                Your video is ready. Review the results, then publish to YouTube.
+              </p>
+
+              {autoResults && (
+                <div style={{ padding: "12px", borderRadius: "8px", background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.2)", marginBottom: "12px" }}>
+                  <div style={{ fontSize: "13px", fontWeight: "700", marginBottom: "4px" }}>{selectedTopic?.title}</div>
+                  <div style={{ fontSize: "9px", color: "var(--text-tertiary)" }}>
+                    Niche: {topicNiche} · Tier: {wizardTier} · Cost: ${(autoResults.totalCost || 0).toFixed(2)}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                <button style={{ ...btnSecondary, padding: "10px" }} onClick={() => { setSubTab("gallery"); loadGallery(); }}>
+                  🖼️ View Assets
+                </button>
+                <button style={{ ...btnSecondary, padding: "10px" }} onClick={() => { setSubTab("pipeline"); loadPipelines(); }}>
+                  🏭 View Pipeline
+                </button>
+                <button style={{ ...btnPrimary, padding: "10px", gridColumn: "span 2" }} onClick={() => {
+                  setWizardStep(1);
+                  setNicheResults(null); setSelectedNiche(null);
+                  setTopicResults(null); setSelectedTopic(null);
+                  setWizardPipelineId(null); setAutoResults(null);
+                }}>
+                  🔄 Start New Production
+                </button>
               </div>
             </div>
           )}
