@@ -217,6 +217,105 @@ Return JSON (no markdown fences):
       return Response.json({ topics: data });
     }
 
+    /* ── CHANNEL STRATEGY ── */
+    if (action === "channel-strategy") {
+      const GEMINI_KEY = process.env.GEMINI_API_KEY;
+      if (!GEMINI_KEY) return Response.json({ error: "GEMINI_API_KEY not configured" }, { status: 500 });
+
+      const { niche, competition, monetization, linkedChannel } = body;
+      const { GoogleGenerativeAI } = await import("@google/generative-ai");
+      const genAI = new GoogleGenerativeAI(GEMINI_KEY);
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+      const prompt = `You are a YouTube channel strategist. Create a complete channel blueprint for a faceless YouTube channel in the "${niche}" niche.
+${linkedChannel ? `Existing channel name: ${linkedChannel}` : ""}
+${competition ? `Competition level: ${competition}` : ""}
+${monetization ? `Monetization potential: ${monetization}` : ""}
+
+Return JSON:
+{
+  "channelName": "Suggested channel name (catchy, SEO-friendly)",
+  "description": "Channel description (200+ words, for YouTube About page)",
+  "targetAudience": "Who watches this content",
+  "contentPillars": [
+    { "name": "Pillar name", "description": "What this pillar covers", "exampleTopics": ["topic1", "topic2"] }
+  ],
+  "uploadFrequency": "Recommended upload schedule",
+  "brandDirection": "Visual style, tone, personality",
+  "monetizationPlan": "How this channel will make money",
+  "growthStrategy": "First 90 days plan",
+  "competitiveEdge": "What makes this channel different"
+}`;
+
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: 4096, temperature: 0.7, responseMimeType: "application/json" },
+      });
+
+      let text = result.response.text().trim();
+      let strategy;
+      try { strategy = JSON.parse(text); }
+      catch {
+        let r = text.replace(/,\s*$/, "");
+        const ob = (r.match(/{/g) || []).length - (r.match(/}/g) || []).length;
+        for (let i = 0; i < ob; i++) r += "}";
+        try { strategy = JSON.parse(r); }
+        catch { strategy = { raw: text.slice(0, 500), parseError: true }; }
+      }
+
+      return Response.json({ strategy });
+    }
+
+    /* ── CONTENT CALENDAR ── */
+    if (action === "content-calendar") {
+      const GEMINI_KEY = process.env.GEMINI_API_KEY;
+      if (!GEMINI_KEY) return Response.json({ error: "GEMINI_API_KEY not configured" }, { status: 500 });
+
+      const { niche, strategy, days, videosPerWeek } = body;
+      const { GoogleGenerativeAI } = await import("@google/generative-ai");
+      const genAI = new GoogleGenerativeAI(GEMINI_KEY);
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+      const pillars = strategy?.contentPillars?.map(p => p.name || p).join(", ") || niche;
+      const totalVideos = Math.ceil((days || 30) / 7 * (videosPerWeek || 3));
+
+      const prompt = `Generate a ${days || 30}-day content calendar for a YouTube channel in the "${niche}" niche.
+Content pillars: ${pillars}
+Videos per week: ${videosPerWeek || 3}
+Total videos needed: ${totalVideos}
+
+Return a JSON array of ${totalVideos} video topics:
+[
+  {
+    "title": "Video title (SEO-optimized, 60 chars max)",
+    "pillar": "Which content pillar this belongs to",
+    "angle": "Unique angle or hook for this video",
+    "keywords": ["keyword1", "keyword2"],
+    "week": 1,
+    "estimatedPerformance": "low|medium|high"
+  }
+]
+Rotate pillars so content stays varied. Order by recommended publish sequence.`;
+
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: 8192, temperature: 0.7, responseMimeType: "application/json" },
+      });
+
+      let text = result.response.text().trim();
+      let calendar;
+      try { calendar = JSON.parse(text); }
+      catch {
+        let r = text.replace(/,\s*$/, "");
+        const ob = (r.match(/\[/g) || []).length - (r.match(/]/g) || []).length;
+        for (let i = 0; i < ob; i++) r += "]";
+        try { calendar = JSON.parse(r); }
+        catch { calendar = []; }
+      }
+
+      return Response.json({ calendar, count: Array.isArray(calendar) ? calendar.length : 0 });
+    }
+
     /* ── RUN A SINGLE PIPELINE STEP ── */
     if (action === "run-step") {
       const { pipelineId, step } = body;
