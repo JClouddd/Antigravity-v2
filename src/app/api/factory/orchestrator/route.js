@@ -9,7 +9,12 @@ function getDb() {
   if (!getApps().length) {
     const cred = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
     if (cred) {
-      initializeApp({ credential: cert(JSON.parse(cred)) });
+      try {
+        initializeApp({ credential: cert(JSON.parse(cred)) });
+      } catch (e) {
+        console.error("[ORCHESTRATOR] Invalid FIREBASE_SERVICE_ACCOUNT_KEY JSON:", e.message);
+        initializeApp({ projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID });
+      }
     } else {
       initializeApp({ projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID });
     }
@@ -311,6 +316,19 @@ Rotate pillars so content stays varied. Order by recommended publish sequence.`;
         for (let i = 0; i < ob; i++) r += "]";
         try { calendar = JSON.parse(r); }
         catch { calendar = []; }
+      }
+
+      // Persist calendar to Firestore so it survives page refreshes
+      try {
+        await db.collection("users").doc(userId).collection("factory_calendars").add({
+          niche,
+          strategy: strategy || null,
+          calendar,
+          count: Array.isArray(calendar) ? calendar.length : 0,
+          createdAt: new Date().toISOString(),
+        });
+      } catch (saveErr) {
+        console.warn("[ORCHESTRATOR] Calendar persist failed (non-fatal):", saveErr.message);
       }
 
       return Response.json({ calendar, count: Array.isArray(calendar) ? calendar.length : 0 });

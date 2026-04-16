@@ -8,7 +8,12 @@ function getDb() {
   if (!getApps().length) {
     const cred = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
     if (cred) {
-      initializeApp({ credential: cert(JSON.parse(cred)) });
+      try {
+        initializeApp({ credential: cert(JSON.parse(cred)) });
+      } catch (e) {
+        console.error("[PUBLISH] Invalid FIREBASE_SERVICE_ACCOUNT_KEY JSON:", e.message);
+        initializeApp({ projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID });
+      }
     } else {
       initializeApp({ projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID });
     }
@@ -167,7 +172,12 @@ export async function POST(req) {
       }
 
       // Download the video file
-      const videoRes = await fetch(videoUrl);
+      let videoRes;
+      try {
+        videoRes = await fetch(videoUrl);
+      } catch (err) {
+        return Response.json({ error: `Failed to fetch video file: ${err.message}` }, { status: 500 });
+      }
       if (!videoRes.ok) {
         return Response.json({ error: `Failed to download video: ${videoRes.status}` }, { status: 500 });
       }
@@ -247,9 +257,10 @@ export async function POST(req) {
 
       // Log to knowledge engine for learning
       try {
-        const baseUrl = process.env.VERCEL_URL
-          ? `https://${process.env.VERCEL_URL}`
-          : "http://localhost:3000";
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL
+          || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : null)
+          || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+          || "http://localhost:3000";
 
         await fetch(`${baseUrl}/api/factory/knowledge`, {
           method: "POST",

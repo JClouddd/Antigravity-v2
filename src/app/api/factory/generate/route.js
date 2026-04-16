@@ -9,7 +9,12 @@ function getDb() {
   if (!getApps().length) {
     const cred = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
     if (cred) {
-      initializeApp({ credential: cert(JSON.parse(cred)) });
+      try {
+        initializeApp({ credential: cert(JSON.parse(cred)) });
+      } catch (e) {
+        console.error("[GENERATE] Invalid FIREBASE_SERVICE_ACCOUNT_KEY JSON:", e.message);
+        initializeApp({ projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID });
+      }
     } else {
       initializeApp({ projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID });
     }

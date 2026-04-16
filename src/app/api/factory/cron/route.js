@@ -9,7 +9,12 @@ function getDb() {
   if (!getApps().length) {
     const cred = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
     if (cred) {
-      initializeApp({ credential: cert(JSON.parse(cred)) });
+      try {
+        initializeApp({ credential: cert(JSON.parse(cred)) });
+      } catch (e) {
+        console.error("[CRON] Invalid FIREBASE_SERVICE_ACCOUNT_KEY JSON:", e.message);
+        initializeApp({ projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID });
+      }
     } else {
       initializeApp({ projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID });
     }
@@ -47,9 +52,11 @@ export async function GET(req) {
       });
     }
 
-    const baseUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : process.env.NEXTAUTH_URL || "http://localhost:3000";
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL
+      || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : null)
+      || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+      || process.env.NEXTAUTH_URL
+      || "http://localhost:3000";
 
     const db = getDb();
     const now = new Date();
@@ -65,6 +72,17 @@ export async function GET(req) {
         body: JSON.stringify({ action: "check-due", userId: defaultUserId }),
       });
       results.scheduler = await schedRes.json();
+
+      // Auto-trigger first step for any newly created pipelines — fire-and-forget
+      if (results.scheduler?.triggered?.length > 0) {
+        for (const { pipelineId } of results.scheduler.triggered) {
+          fetch(`${baseUrl}/api/factory/orchestrator`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "run-step", userId: defaultUserId, pipelineId }),
+          }).catch(err => console.error(`[CRON SCHEDULER] Auto-start failed for ${pipelineId}:`, err.message));
+        }
+      }
     } catch (err) {
       results.scheduler = { error: err.message };
     }
@@ -130,18 +148,12 @@ export async function GET(req) {
             }),
           });
 
-          // Re-run the current step
-          try {
-            await fetch(`${baseUrl}/api/factory/orchestrator`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                action: "run-step",
-                userId: defaultUserId,
-                pipelineId,
-              }),
-            });
-          } catch { /* step execution logged separately */ }
+          // Re-run the current step — fire-and-forget, orchestrator has its own 120s timeout
+          fetch(`${baseUrl}/api/factory/orchestrator`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "run-step", userId: defaultUserId, pipelineId }),
+          }).catch(err => console.error(`[CRON WATCHDOG] Error-retry trigger failed for ${pipelineId}:`, err.message));
 
           await watchdogLog.add({
             pipelineId,
@@ -192,17 +204,12 @@ export async function GET(req) {
             }),
           });
 
-          try {
-            await fetch(`${baseUrl}/api/factory/orchestrator`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                action: "run-step",
-                userId: defaultUserId,
-                pipelineId,
-              }),
-            });
-          } catch {}
+          // Nudge stalled step — fire-and-forget, orchestrator has its own 120s timeout
+          fetch(`${baseUrl}/api/factory/orchestrator`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "run-step", userId: defaultUserId, pipelineId }),
+          }).catch(err => console.error(`[CRON WATCHDOG] Stall-retry trigger failed for ${pipelineId}:`, err.message));
 
           await watchdogLog.add({
             pipelineId,

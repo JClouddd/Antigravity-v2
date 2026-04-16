@@ -6,9 +6,14 @@ let _db = null;
 function getAdminDb() {
   if (_db) return _db;
 
-  const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_KEY
-    ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY)
-    : null;
+  let serviceAccount = null;
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+    try {
+      serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+    } catch (e) {
+      console.error("[firebaseAdmin] Invalid FIREBASE_SERVICE_ACCOUNT_KEY JSON:", e.message);
+    }
+  }
 
   if (!serviceAccount) {
     console.warn("[firebaseAdmin] No FIREBASE_SERVICE_ACCOUNT_KEY — Siri API will not work");
