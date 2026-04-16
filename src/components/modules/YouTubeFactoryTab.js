@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/AuthContext";
 
 /* ─── Shared Styles ─── */
@@ -958,22 +958,58 @@ export default function YouTubeFactoryTab({ channels }) {
           )}
 
           {/* ── STEP 5: EXECUTE ── */}
-          {wizardStep === 5 && (
+          {wizardStep === 5 && (() => {
+            // Auto-load pipelines if none loaded and no pipelineId
+            if (!wizardPipelineId && pipelines.length === 0 && !pipeLoading) { setTimeout(loadPipelines, 0); }
+            return true;
+          })() && (
             <div style={{ ...card, borderTop: "3px solid #ef4444" }}>
               <h4 style={{ fontSize: "14px", fontWeight: "700", marginBottom: "2px" }}>Step 5: Autonomous Production</h4>
 
-              {!wizardPipelineId && (
-                <p style={{ fontSize: "10px", color: "var(--text-tertiary)" }}>Creating pipeline...</p>
+              {/* No pipeline ID — show resume option */}
+              {!wizardPipelineId && !autoRunning && !autoResults && (
+                <div style={{ marginTop: "8px" }}>
+                  <p style={{ fontSize: "10px", color: "var(--text-tertiary)", marginBottom: "8px" }}>
+                    No active pipeline. Resume an existing one or go back to create a new pipeline.
+                  </p>
+                  {pipelines.filter(p => p.state !== "COMPLETE" && p.state !== "CANCELLED").length > 0 ? (
+                    pipelines.filter(p => p.state !== "COMPLETE" && p.state !== "CANCELLED").map(p => (
+                      <div key={p.pipelineId} style={{
+                        padding: "10px", borderRadius: "8px", marginBottom: "6px", cursor: "pointer",
+                        border: "1px solid rgba(139,92,246,0.2)", background: "rgba(139,92,246,0.04)",
+                      }} onClick={() => { setWizardPipelineId(p.pipelineId); setSelectedTopic({ title: p.topic }); setTopicNiche(p.niche); }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <div>
+                            <div style={{ fontSize: "12px", fontWeight: "600" }}>{p.topic}</div>
+                            <div style={{ fontSize: "9px", color: "var(--text-tertiary)" }}>
+                              {p.state?.replace(/_/g, " ")} · {p.progress}% · ${(p.totalCost || 0).toFixed(3)}
+                            </div>
+                          </div>
+                          <button style={{ ...btnPrimary, fontSize: "9px", padding: "4px 10px" }}>
+                            ▶ Resume
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <button style={{ ...btnSecondary, width: "100%", marginBottom: "6px" }} onClick={loadPipelines}>
+                      📋 Load Existing Pipelines
+                    </button>
+                  )}
+                  <button style={{ ...btnSecondary, width: "100%", marginTop: "4px" }} onClick={() => setWizardStep(1)}>
+                    ← Back to Discover Niches
+                  </button>
+                </div>
               )}
 
               {wizardPipelineId && !autoRunning && !autoResults && (
                 <>
                   <p style={{ fontSize: "10px", color: "var(--text-tertiary)", marginBottom: "12px" }}>
-                    Pipeline created. Click below to execute the full production: Script → Blueprint → Voice + Music → Visuals → Compose
+                    Pipeline ready. Click below to execute (resumes from where it left off).
                   </p>
                   <div style={{ padding: "10px", borderRadius: "8px", background: "rgba(139,92,246,0.06)", marginBottom: "12px" }}>
                     <div style={{ fontSize: "11px", fontWeight: "600" }}>{selectedTopic?.title}</div>
-                    <div style={{ fontSize: "9px", color: "var(--text-tertiary)" }}>Niche: {topicNiche} · Tier: {wizardTier}</div>
+                    <div style={{ fontSize: "9px", color: "var(--text-tertiary)" }}>Niche: {topicNiche} · Tier: {wizardTier} · ID: {wizardPipelineId?.slice(0, 8)}...</div>
                   </div>
                   <button style={{ ...btnPrimary, width: "100%", padding: "12px", fontSize: "14px", background: "linear-gradient(135deg, #ef4444, #dc2626)" }} onClick={() => runFullPipeline()}>
                     🤖 Execute Full Autonomous Pipeline
