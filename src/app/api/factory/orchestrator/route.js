@@ -490,26 +490,14 @@ Return JSON (no markdown fences):
 
             if (scriptResult.error) { stepError = scriptResult.error; break; }
 
-            // Auto-generate blueprint (non-blocking)
-            let blueprint = null;
-            try {
-              const bpResult = await callFactory("generate", {
-                action: "blueprint",
-                script: scriptResult.script,
-                videoTier: pipeData.videoTier,
-              });
-              blueprint = bpResult.blueprint;
-            } catch { /* skip */ }
-
             await callFactory("pipeline", {
               action: "advance",
               pipelineId,
-              assetUpdates: { script: scriptResult.script, blueprint },
+              assetUpdates: { script: scriptResult.script },
               costUpdate: { type: "script", amount: scriptResult.cost || 0 },
             });
 
             results.script = "generated";
-            results.blueprint = blueprint ? "generated" : "skipped";
             results.cost = scriptResult.cost || 0;
             break;
           }

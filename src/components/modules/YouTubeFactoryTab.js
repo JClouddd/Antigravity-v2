@@ -318,29 +318,46 @@ export default function YouTubeFactoryTab({ channels }) {
       await loadPipelines();
     }
   };
+  const [currentStepLabel, setCurrentStepLabel] = useState("");
   const runFullPipeline = async (pipelineId) => {
     setAutoRunning(true);
     setAutoResults(null);
+    setCurrentStepLabel("Initializing pipeline...");
     const pid = pipelineId || wizardPipelineId;
     const allResults = {};
     let finalData = null;
 
-    // Drive pipeline step-by-step from the UI.
-    // Each call executes ONE step, returns nextStep.
-    // Loop until completed or error.
+    const stepLabels = {
+      generate_script: "✍️ Writing script with AI...",
+      generate_voice: "🎙️ Generating voice & music...",
+      generate_visuals: "🎨 Creating images & video...",
+      compose: "🎬 Composing final video...",
+    };
+
+    // Drive pipeline step-by-step from the UI
     for (let i = 0; i < 10; i++) {
       try {
         const data = await api("orchestrator", { action: "run-full", pipelineId: pid });
         console.log(`[RUBRIC] Step ${i + 1}:`, data.stepExecuted, data);
 
         if (data.stepExecuted) {
-          allResults[data.stepExecuted] = data.results || {};
+          allResults[data.stepExecuted] = { ...data.results, cost: data.totalCost };
+          // Show incremental progress
+          setAutoResults({
+            ...data,
+            results: { ...allResults },
+            completed: false,
+          });
+          setCurrentStepLabel(`✅ ${data.stepExecuted.replace(/_/g, " ")} done`);
         }
         finalData = data;
 
         if (data.completed || data.error || !data.nextStep) {
           break;
         }
+
+        // Show label for next step
+        setCurrentStepLabel(stepLabels[data.nextStep] || `Running ${data.nextStep}...`);
       } catch (err) {
         console.error("[RUBRIC] Pipeline step failed:", err);
         finalData = { error: err.message, completed: false };
@@ -348,12 +365,12 @@ export default function YouTubeFactoryTab({ channels }) {
       }
     }
 
-    // Merge accumulated results into final output
     if (finalData) {
       finalData.results = allResults;
     }
     setAutoResults(finalData);
     setAutoRunning(false);
+    setCurrentStepLabel("");
     if (finalData?.completed) setWizardStep(6);
     await loadPipelines();
   };
@@ -968,16 +985,30 @@ export default function YouTubeFactoryTab({ channels }) {
                 <div style={{ textAlign: "center", padding: "24px" }}>
                   <div style={{ fontSize: "32px", marginBottom: "8px", animation: "pulse 2s infinite" }}>🤖</div>
                   <div style={{ fontSize: "13px", fontWeight: "600" }}>RUBRIC Engine Running...</div>
-                  <div style={{ fontSize: "10px", color: "var(--text-tertiary)", marginTop: "4px" }}>
-                    Generating script → blueprint → voice → music → subtitles → images → video → compose
+                  <div style={{ fontSize: "11px", color: "#8b5cf6", marginTop: "6px", fontWeight: "600" }}>
+                    {currentStepLabel || "Preparing..."}
+                  </div>
+                  <div style={{ fontSize: "9px", color: "var(--text-tertiary)", marginTop: "4px" }}>
+                    Each step takes 30-90 seconds. Do not close this page.
                   </div>
                   <div style={{ width: "100%", height: "4px", borderRadius: "2px", background: "var(--bg-tertiary)", marginTop: "12px", overflow: "hidden" }}>
-                    <div style={{ height: "100%", background: "linear-gradient(90deg, #8b5cf6, #3b82f6, #10b981)", width: "60%", borderRadius: "2px", animation: "progress 3s ease-in-out infinite" }} />
+                    <div style={{ height: "100%", background: "linear-gradient(90deg, #8b5cf6, #3b82f6, #10b981)", width: autoResults?.progress ? `${autoResults.progress}%` : "30%", borderRadius: "2px", transition: "width 0.5s", animation: autoResults?.progress ? "none" : "progress 3s ease-in-out infinite" }} />
                   </div>
+                  {/* Show completed steps so far */}
+                  {autoResults?.results && Object.keys(autoResults.results).length > 0 && (
+                    <div style={{ marginTop: "12px", textAlign: "left" }}>
+                      {Object.entries(autoResults.results).map(([step, data]) => (
+                        <div key={step} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontSize: "10px" }}>
+                          <span style={{ color: "#10b981" }}>✅ {step.replace(/_/g, " ")}</span>
+                          <span style={{ color: "var(--text-tertiary)" }}>${(data.cost || 0).toFixed(3)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
-              {autoResults && (
+              {autoResults && !autoRunning && (
                 <div style={{ padding: "12px", borderRadius: "8px", background: autoResults.completed ? "rgba(16,185,129,0.06)" : "rgba(239,68,68,0.06)", border: `1px solid ${autoResults.completed ? "rgba(16,185,129,0.2)" : "rgba(239,68,68,0.2)"}`, marginTop: "8px" }}>
                   <div style={{ fontSize: "14px", fontWeight: "700", marginBottom: "6px" }}>
                     {autoResults.completed ? "✅ Production Complete!" : "⚠️ Production Paused"}
