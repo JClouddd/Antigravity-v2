@@ -50,6 +50,13 @@ export async function POST(req) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId, ...payload }),
       });
+      // Handle non-JSON responses (Vercel error pages)
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        const text = await res.text();
+        console.error(`[ORCHESTRATOR] ${route} returned non-JSON (${res.status}):`, text.slice(0, 200));
+        return { error: `${route} returned HTTP ${res.status}` };
+      }
       return res.json();
     }
 
@@ -438,47 +445,128 @@ Return JSON (no markdown fences):
       return Response.json({ pipelineId, step: currentStep, results });
     }
 
-    /* ── RUN FULL PIPELINE (autonomous) ── */
+    /* ── RUN FULL PIPELINE (step-by-step, no self-reference) ── */
     if (action === "run-full") {
       const { pipelineId } = body;
       if (!pipelineId) return Response.json({ error: "pipelineId required" }, { status: 400 });
 
-      const steps = ["generate_script", "generate_voice", "generate_visuals", "compose"];
-      const results = {};
-      let lastError = null;
+      // Execute only the FIRST pending step per invocation.
+      // The UI calls run-full repeatedly until all steps are done.
+      // This avoids serverless self-referencing timeouts.
+      const pipeData = await callFactory("pipeline", { action: "status", pipelineId });
+      if (pipeData.error) return Response.json({ error: pipeData.error }, { status: 404 });
 
-      for (const step of steps) {
-        try {
-          const stepResult = await callFactory("orchestrator", {
-            action: "run-step",
-            pipelineId,
-            step,
-          });
-
-          results[step] = stepResult.results || stepResult;
-
-          if (stepResult.error) {
-            lastError = stepResult.error;
-            break;
-          }
-        } catch (err) {
-          lastError = err.message;
-          results[step] = { error: err.message };
-          break;
-        }
+      const currentStep = getNextStep(pipeData.state);
+      if (!currentStep || pipeData.state === "COMPLETE" || pipeData.state === "COMPOSED" || pipeData.state === "PUBLISHED") {
+        return Response.json({
+          pipelineId,
+          completed: true,
+          state: pipeData.state,
+          progress: pipeData.progress || 100,
+          totalCost: pipeData.totalCost || 0,
+          results: { status: "all steps complete" },
+        });
       }
 
-      // Get final pipeline status
+      // Execute this one step inline (not via self-referencing HTTP)
+      // We replicate the run-step logic here to avoid the fetch-to-self problem.
+      const results = {};
+      let stepError = null;
+
+      try {
+        switch (currentStep) {
+          case "generate_script": {
+            const scriptResult = await callFactory("generate", {
+              action: "script",
+              topic: pipeData.topic,
+              niche: pipeData.niche,
+              tone: pipeData.tone,
+              duration: pipeData.targetDuration,
+              style: pipeData.style,
+              channelName: pipeData.channelName,
+            });
+
+            if (scriptResult.error) { stepError = scriptResult.error; break; }
+
+            // Auto-generate blueprint (non-blocking)
+            let blueprint = null;
+            try {
+              const bpResult = await callFactory("generate", {
+                action: "blueprint",
+                script: scriptResult.script,
+                videoTier: pipeData.videoTier,
+              });
+              blueprint = bpResult.blueprint;
+            } catch { /* skip */ }
+
+            await callFactory("pipeline", {
+              action: "advance",
+              pipelineId,
+              assetUpdates: { script: scriptResult.script, blueprint },
+              costUpdate: { type: "script", amount: scriptResult.cost || 0 },
+            });
+
+            results.script = "generated";
+            results.blueprint = blueprint ? "generated" : "skipped";
+            results.cost = scriptResult.cost || 0;
+            break;
+          }
+
+          case "generate_voice": {
+            const script = pipeData.assets?.script;
+            if (!script?.scenes) { stepError = "No script found"; break; }
+
+            const fullNarration = script.scenes.map(s => s.narration).join("\n\n");
+            const ttsResult = await callFactory("generate", { action: "tts", text: fullNarration });
+            if (ttsResult.error) { stepError = ttsResult.error; break; }
+
+            const srtResult = await callFactory("generate", { action: "subtitles", scenes: script.scenes });
+
+            const musicPlan = pipeData.assets?.blueprint?.assetManifest?.musicPrompt || script.musicPlan?.prompt;
+            const musicResult = await callFactory("generate", {
+              action: "music",
+              prompt: musicPlan || `Background music for ${pipeData.niche || "general"} video. Calm, no vocals.`,
+            });
+
+            const totalCost = (ttsResult.cost || 0) + (srtResult.cost || 0) + (musicResult.cost || 0);
+            await callFactory("pipeline", {
+              action: "advance",
+              pipelineId,
+              assetUpdates: { voiceUrl: ttsResult.audioUrl, subtitlesSrt: srtResult.srt, musicUrl: musicResult.audioUrl || null },
+              costUpdate: { type: "audio", amount: totalCost },
+            });
+
+            results.voice = "generated";
+            results.cost = totalCost;
+            break;
+          }
+
+          default: {
+            results.step = currentStep;
+            results.status = "step not yet implemented in run-full inline";
+            break;
+          }
+        }
+      } catch (err) {
+        stepError = err.message;
+      }
+
+      if (stepError) {
+        await callFactory("pipeline", { action: "error", pipelineId, error: stepError }).catch(() => {});
+      }
+
       const finalStatus = await callFactory("pipeline", { action: "status", pipelineId });
 
       return Response.json({
         pipelineId,
-        completed: !lastError,
+        completed: !stepError && (finalStatus.state === "COMPLETE" || finalStatus.state === "COMPOSED"),
+        stepExecuted: currentStep,
         state: finalStatus.state,
         progress: finalStatus.progress,
         totalCost: finalStatus.totalCost,
         results,
-        error: lastError,
+        error: stepError,
+        nextStep: stepError ? null : getNextStep(finalStatus.state),
       });
     }
 

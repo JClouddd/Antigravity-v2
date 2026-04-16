@@ -321,10 +321,40 @@ export default function YouTubeFactoryTab({ channels }) {
   const runFullPipeline = async (pipelineId) => {
     setAutoRunning(true);
     setAutoResults(null);
-    const data = await api("orchestrator", { action: "run-full", pipelineId: pipelineId || wizardPipelineId });
-    setAutoResults(data);
+    const pid = pipelineId || wizardPipelineId;
+    const allResults = {};
+    let finalData = null;
+
+    // Drive pipeline step-by-step from the UI.
+    // Each call executes ONE step, returns nextStep.
+    // Loop until completed or error.
+    for (let i = 0; i < 10; i++) {
+      try {
+        const data = await api("orchestrator", { action: "run-full", pipelineId: pid });
+        console.log(`[RUBRIC] Step ${i + 1}:`, data.stepExecuted, data);
+
+        if (data.stepExecuted) {
+          allResults[data.stepExecuted] = data.results || {};
+        }
+        finalData = data;
+
+        if (data.completed || data.error || !data.nextStep) {
+          break;
+        }
+      } catch (err) {
+        console.error("[RUBRIC] Pipeline step failed:", err);
+        finalData = { error: err.message, completed: false };
+        break;
+      }
+    }
+
+    // Merge accumulated results into final output
+    if (finalData) {
+      finalData.results = allResults;
+    }
+    setAutoResults(finalData);
     setAutoRunning(false);
-    if (data.completed) setWizardStep(6);
+    if (finalData?.completed) setWizardStep(6);
     await loadPipelines();
   };
   const runStep = async (pipelineId, step) => {
