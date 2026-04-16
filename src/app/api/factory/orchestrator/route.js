@@ -343,7 +343,7 @@ Rotate pillars so content stays varied. Order by recommended publish sequence.`;
       const pipeData = await callFactory("pipeline", { action: "status", pipelineId });
       if (pipeData.error) return Response.json({ error: pipeData.error }, { status: 404 });
 
-      const currentStep = step || getNextStep(pipeData.state);
+      const currentStep = step || getNextStep(pipeData.state, pipeData.reviewRequired);
       const results = {};
 
       switch (currentStep) {
@@ -425,19 +425,25 @@ Rotate pillars so content stays varied. Order by recommended publish sequence.`;
 
           const totalCost = (ttsResult.cost || 0) + (srtResult.cost || 0) + (musicResult.cost || 0);
 
+          // Persist to Firebase Storage — fal.ai CDN URLs expire in ~24h
+          const voiceUrl = await persistToStorage(ttsResult.audioUrl, `pipelines/${pipelineId}/voice.mp3`, "audio/mpeg");
+          const musicUrl = musicResult.audioUrl
+            ? await persistToStorage(musicResult.audioUrl, `pipelines/${pipelineId}/music.mp3`, "audio/mpeg")
+            : null;
+
           await callFactory("pipeline", {
             action: "advance",
             pipelineId,
             assetUpdates: {
-              voiceUrl: ttsResult.audioUrl,
+              voiceUrl,
               subtitlesSrt: srtResult.srt,
-              musicUrl: musicResult.audioUrl || null,
+              musicUrl,
             },
             costUpdate: { type: "audio", amount: totalCost },
           });
 
-          results.voiceUrl = ttsResult.audioUrl;
-          results.musicUrl = musicResult.audioUrl;
+          results.voiceUrl = voiceUrl;
+          results.musicUrl = musicUrl;
           results.cost = totalCost;
           break;
         }
@@ -467,12 +473,17 @@ Rotate pillars so content stays varied. Order by recommended publish sequence.`;
             });
 
             if (imgResult.imageUrl) {
-              sceneImages.push(imgResult.imageUrl);
+              const persistedImg = await persistToStorage(
+                imgResult.imageUrl,
+                `pipelines/${pipelineId}/scene_${scene.sceneNumber || sceneImages.length}.png`,
+                "image/png"
+              );
+              sceneImages.push(persistedImg);
               totalCost += imgResult.cost || 0;
 
               await callFactory("assets", {
                 action: "save",
-                url: imgResult.imageUrl,
+                url: persistedImg,
                 type: "image",
                 prompt: scene.imagePrompt || scene.visualDescription,
                 model: imgResult.model,
@@ -520,11 +531,15 @@ Rotate pillars so content stays varied. Order by recommended publish sequence.`;
             prompt: thumbPlan?.prompt || script.thumbnailPrompt || `${pipeData.topic} YouTube thumbnail`,
           });
 
-          if (thumbResult.imageUrl) {
+          const thumbnailUrl = thumbResult.imageUrl
+            ? await persistToStorage(thumbResult.imageUrl, `pipelines/${pipelineId}/thumbnail.png`, "image/png")
+            : null;
+
+          if (thumbnailUrl) {
             totalCost += thumbResult.cost || 0;
             await callFactory("assets", {
               action: "save",
-              url: thumbResult.imageUrl,
+              url: thumbnailUrl,
               type: "thumbnail",
               prompt: script.thumbnailPrompt,
               pipelineId,
@@ -535,25 +550,46 @@ Rotate pillars so content stays varied. Order by recommended publish sequence.`;
           await callFactory("pipeline", {
             action: "advance",
             pipelineId,
-            assetUpdates: { sceneImages, sceneVideos, thumbnailUrl: thumbResult.imageUrl },
+            assetUpdates: { sceneImages, sceneVideos, thumbnailUrl },
             costUpdate: { type: "visuals", amount: totalCost },
           });
           await callFactory("pipeline", { action: "advance", pipelineId });
 
           results.images = sceneImages.length;
           results.videos = sceneVideos.length;
-          results.thumbnail = thumbResult.imageUrl;
+          results.thumbnail = thumbnailUrl;
           results.cost = totalCost;
           break;
         }
 
         case "compose": {
-          const composeResult = await callFactory("compose", {
-            action: "trigger",
-            pipelineId,
-          });
-
+          if (!process.env.FACTORY_COMPOSER_URL) {
+            // No Cloud Run deployed — skip compose immediately instead of waiting 30+ min for watchdog
+            await callFactory("pipeline", { action: "advance", pipelineId }); // ASSETS_READY → COMPOSITING
+            await callFactory("pipeline", { action: "advance", pipelineId }); // COMPOSITING → COMPOSED
+            results.compose = { skipped: true, reason: "FACTORY_COMPOSER_URL not configured — set to enable FFmpeg video assembly" };
+            break;
+          }
+          const composeResult = await callFactory("compose", { action: "trigger", pipelineId });
           results.compose = composeResult;
+          break;
+        }
+
+        case "publish": {
+          const publishResult = await callFactory("publish", {
+            action: "publish",
+            pipelineId,
+            privacy: pipeData.privacy || "public",
+          });
+          if (publishResult.requiresAuth) {
+            // No YouTube token yet — stall here gracefully, don't count as error
+            results.publish = { requiresAuth: true, message: "YouTube OAuth required — authenticate in Settings to enable auto-publish" };
+          } else if (publishResult.error) {
+            await callFactory("pipeline", { action: "error", pipelineId, error: publishResult.error });
+            results.publish = { error: publishResult.error };
+          } else {
+            results.publish = publishResult;
+          }
           break;
         }
 
@@ -575,8 +611,8 @@ Rotate pillars so content stays varied. Order by recommended publish sequence.`;
       const pipeData = await callFactory("pipeline", { action: "status", pipelineId });
       if (pipeData.error) return Response.json({ error: pipeData.error }, { status: 404 });
 
-      const currentStep = getNextStep(pipeData.state);
-      if (!currentStep || pipeData.state === "COMPLETE" || pipeData.state === "COMPOSED" || pipeData.state === "PUBLISHED") {
+      const currentStep = getNextStep(pipeData.state, pipeData.reviewRequired);
+      if (!currentStep || pipeData.state === "COMPLETE" || pipeData.state === "PUBLISHED") {
         return Response.json({
           pipelineId,
           completed: true,
@@ -647,21 +683,53 @@ Rotate pillars so content stays varied. Order by recommended publish sequence.`;
             } catch (e) { console.warn("[ORCHESTRATOR] Music failed (non-fatal):", e.message); }
 
             const totalCost = (ttsResult.cost || 0) + (srtResult.cost || 0) + (musicResult.cost || 0);
+            const voiceUrl = await persistToStorage(ttsResult.audioUrl, `pipelines/${pipelineId}/voice.mp3`, "audio/mpeg");
+            const musicUrl = musicResult.audioUrl
+              ? await persistToStorage(musicResult.audioUrl, `pipelines/${pipelineId}/music.mp3`, "audio/mpeg")
+              : null;
             await callFactory("pipeline", {
               action: "advance",
               pipelineId,
               assetUpdates: {
-                voiceUrl: ttsResult.audioUrl,
+                voiceUrl,
                 subtitlesSrt: srtResult.srt || null,
-                musicUrl: musicResult.audioUrl || null,
+                musicUrl,
               },
               costUpdate: { type: "audio", amount: totalCost },
             });
 
-            results.voice = ttsResult.audioUrl ? "generated" : "failed";
+            results.voice = voiceUrl ? "generated" : "failed";
             results.subtitles = srtResult.srt ? "generated" : "skipped";
-            results.music = musicResult.audioUrl ? "generated" : "skipped";
+            results.music = musicUrl ? "generated" : "skipped";
             results.cost = totalCost;
+            break;
+          }
+
+          case "compose": {
+            if (!process.env.FACTORY_COMPOSER_URL) {
+              await callFactory("pipeline", { action: "advance", pipelineId });
+              await callFactory("pipeline", { action: "advance", pipelineId });
+              results.compose = { skipped: true, reason: "FACTORY_COMPOSER_URL not configured" };
+            } else {
+              const composeResult = await callFactory("compose", { action: "trigger", pipelineId });
+              results.compose = composeResult;
+            }
+            break;
+          }
+
+          case "publish": {
+            const publishResult = await callFactory("publish", {
+              action: "publish",
+              pipelineId,
+              privacy: pipeData.privacy || "public",
+            });
+            if (publishResult.requiresAuth) {
+              results.publish = { requiresAuth: true, message: "YouTube OAuth required — authenticate in Settings" };
+            } else if (publishResult.error) {
+              stepError = publishResult.error;
+            } else {
+              results.publish = publishResult;
+            }
             break;
           }
 
@@ -690,7 +758,7 @@ Rotate pillars so content stays varied. Order by recommended publish sequence.`;
         totalCost: finalStatus.totalCost,
         results,
         error: stepError,
-        nextStep: stepError ? null : getNextStep(finalStatus.state),
+        nextStep: stepError ? null : getNextStep(finalStatus.state, finalStatus.reviewRequired),
       });
     }
 
@@ -703,12 +771,40 @@ Rotate pillars so content stays varied. Order by recommended publish sequence.`;
   }
 }
 
-function getNextStep(state) {
+/**
+ * Download an asset from a temporary URL (e.g. fal.ai CDN) and persist it
+ * to Firebase Storage so it doesn't expire. Falls back to original URL on error.
+ */
+async function persistToStorage(url, storagePath, contentType = "application/octet-stream") {
+  if (!url || !process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID) return url;
+  try {
+    const { getStorage } = await import("firebase-admin/storage");
+    const bucketName = process.env.GCS_BUCKET
+      || `${process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID}.firebasestorage.app`;
+    const response = await fetch(url, { signal: AbortSignal.timeout(25000) });
+    if (!response.ok) return url;
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const file = getStorage().bucket(bucketName).file(storagePath);
+    await file.save(buffer, { contentType, resumable: false });
+    await file.makePublic();
+    return `https://storage.googleapis.com/${bucketName}/${storagePath}`;
+  } catch (err) {
+    console.warn(`[ASSET STORAGE] Persist failed (${storagePath}):`, err.message);
+    return url; // Fall back to original — pipeline continues
+  }
+}
+
+function getNextStep(state, reviewRequired) {
   const stepMap = {
     NICHE_SELECTED: "generate_script",
     SCRIPT_GENERATED: "generate_voice",
     ASSETS_GENERATING: "generate_visuals",
     ASSETS_READY: "compose",
   };
-  return stepMap[state] || "generate_script";
+  // Auto-publish only when human review is not required
+  if (!reviewRequired) {
+    stepMap.COMPOSED = "publish";
+    stepMap.REVIEW = "publish";
+  }
+  return stepMap[state] || null;
 }

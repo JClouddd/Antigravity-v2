@@ -181,6 +181,19 @@ export async function POST(req) {
       if (!videoRes.ok) {
         return Response.json({ error: `Failed to download video: ${videoRes.status}` }, { status: 500 });
       }
+
+      // Guard against OOM — Vercel serverless has ~250MB memory limit
+      const contentLength = parseInt(videoRes.headers.get("content-length") || "0");
+      const MAX_BYTES = 50 * 1024 * 1024; // 50MB safe limit
+      if (contentLength > MAX_BYTES) {
+        return Response.json({
+          error: `Video is ${Math.round(contentLength / 1024 / 1024)}MB — too large for serverless upload (50MB max). Deploy FACTORY_COMPOSER_URL on Cloud Run to handle large uploads.`,
+          videoUrl,
+          fileSizeMB: Math.round(contentLength / 1024 / 1024),
+          requiresCloudRun: true,
+        }, { status: 413 });
+      }
+
       const videoBuffer = await videoRes.arrayBuffer();
 
       // Resumable upload to YouTube
