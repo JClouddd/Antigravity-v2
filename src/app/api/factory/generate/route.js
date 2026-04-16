@@ -64,22 +64,34 @@ async function callFal(model, input) {
     throw new Error(`fal.ai ${res.status}: ${err}`);
   }
 
+  const text = await res.text();
+  if (!text || text.trim() === "") throw new Error("fal.ai returned empty response");
+  let data;
+  try { data = JSON.parse(text); }
+  catch { throw new Error(`fal.ai returned invalid JSON: ${text.slice(0, 200)}`); }
+
   // Check if queued
-  const data = await res.json();
   if (data.request_id && !data.output) {
-    // Poll for result
     const reqId = data.request_id;
     for (let i = 0; i < 60; i++) {
       await new Promise(r => setTimeout(r, 3000));
       const statusRes = await fetch(`https://queue.fal.run/${model}/requests/${reqId}/status`, {
         headers: { Authorization: `Key ${FAL_KEY}` },
       });
-      const status = await statusRes.json();
+      const statusText = await statusRes.text();
+      if (!statusText) continue;
+      let status;
+      try { status = JSON.parse(statusText); }
+      catch { continue; }
+
       if (status.status === "COMPLETED") {
         const resultRes = await fetch(`https://queue.fal.run/${model}/requests/${reqId}`, {
           headers: { Authorization: `Key ${FAL_KEY}` },
         });
-        return await resultRes.json();
+        const resultText = await resultRes.text();
+        if (!resultText) throw new Error("fal.ai returned empty result");
+        try { return JSON.parse(resultText); }
+        catch { throw new Error(`fal.ai result invalid JSON: ${resultText.slice(0, 200)}`); }
       }
       if (status.status === "FAILED") throw new Error(`fal.ai job failed: ${JSON.stringify(status)}`);
     }

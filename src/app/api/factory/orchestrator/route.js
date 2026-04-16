@@ -504,29 +504,46 @@ Return JSON (no markdown fences):
 
           case "generate_voice": {
             const script = pipeData.assets?.script;
-            if (!script?.scenes) { stepError = "No script found"; break; }
+            if (!script?.scenes) { stepError = "No script found — run script generation first"; break; }
 
             const fullNarration = script.scenes.map(s => s.narration).join("\n\n");
+            if (!fullNarration.trim()) { stepError = "Script has no narration text"; break; }
+
+            // TTS is critical — must succeed
             const ttsResult = await callFactory("generate", { action: "tts", text: fullNarration });
-            if (ttsResult.error) { stepError = ttsResult.error; break; }
+            if (ttsResult.error) { stepError = `TTS failed: ${ttsResult.error}`; break; }
 
-            const srtResult = await callFactory("generate", { action: "subtitles", scenes: script.scenes });
+            // Subtitles — non-fatal
+            let srtResult = { srt: null };
+            try {
+              srtResult = await callFactory("generate", { action: "subtitles", scenes: script.scenes });
+            } catch (e) { console.warn("[ORCHESTRATOR] Subtitles failed (non-fatal):", e.message); }
 
-            const musicPlan = pipeData.assets?.blueprint?.assetManifest?.musicPrompt || script.musicPlan?.prompt;
-            const musicResult = await callFactory("generate", {
-              action: "music",
-              prompt: musicPlan || `Background music for ${pipeData.niche || "general"} video. Calm, no vocals.`,
-            });
+            // Music — non-fatal
+            let musicResult = { audioUrl: null, cost: 0 };
+            try {
+              const musicPlan = pipeData.assets?.blueprint?.assetManifest?.musicPrompt || script.musicPlan?.prompt;
+              musicResult = await callFactory("generate", {
+                action: "music",
+                prompt: musicPlan || `Background music for ${pipeData.niche || "general"} video. Calm, no vocals.`,
+              });
+            } catch (e) { console.warn("[ORCHESTRATOR] Music failed (non-fatal):", e.message); }
 
             const totalCost = (ttsResult.cost || 0) + (srtResult.cost || 0) + (musicResult.cost || 0);
             await callFactory("pipeline", {
               action: "advance",
               pipelineId,
-              assetUpdates: { voiceUrl: ttsResult.audioUrl, subtitlesSrt: srtResult.srt, musicUrl: musicResult.audioUrl || null },
+              assetUpdates: {
+                voiceUrl: ttsResult.audioUrl,
+                subtitlesSrt: srtResult.srt || null,
+                musicUrl: musicResult.audioUrl || null,
+              },
               costUpdate: { type: "audio", amount: totalCost },
             });
 
-            results.voice = "generated";
+            results.voice = ttsResult.audioUrl ? "generated" : "failed";
+            results.subtitles = srtResult.srt ? "generated" : "skipped";
+            results.music = musicResult.audioUrl ? "generated" : "skipped";
             results.cost = totalCost;
             break;
           }
