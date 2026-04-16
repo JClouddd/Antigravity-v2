@@ -109,15 +109,19 @@ Return JSON (no markdown fences):
       try { data = JSON.parse(text); }
       catch { data = { raw: text }; }
 
-      // Store in knowledge base for future reference
-      await callFactory("knowledge", {
-        action: "ingest",
-        title: `Niche Discovery — ${category || "General"} — ${new Date().toISOString().split("T")[0]}`,
-        content: JSON.stringify(data, null, 2),
-        sourceType: "niche_discovery",
-        category: "niche",
-        tags: [category || "general", "discovery"],
-      });
+      // Store in knowledge base (non-blocking — don't crash if it fails)
+      try {
+        await callFactory("knowledge", {
+          action: "ingest",
+          title: `Niche Discovery — ${category || "General"} — ${new Date().toISOString().split("T")[0]}`,
+          content: JSON.stringify(data, null, 2),
+          sourceType: "niche_discovery",
+          category: "niche",
+          tags: [category || "general", "discovery"],
+        });
+      } catch (kbErr) {
+        console.warn("[ORCHESTRATOR] Knowledge ingest failed (non-fatal):", kbErr.message);
+      }
 
       return Response.json({ niches: data });
     }

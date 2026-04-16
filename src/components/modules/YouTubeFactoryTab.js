@@ -250,8 +250,19 @@ export default function YouTubeFactoryTab({ channels }) {
   const discoverNiches = async () => {
     setNicheLoading(true);
     setNicheResults(null);
-    const data = await api("orchestrator", { action: "niche-discover", category: nicheCategory || undefined, count: 5 });
-    setNicheResults(data.niches);
+    try {
+      const data = await api("orchestrator", { action: "niche-discover", category: nicheCategory || undefined, count: 5 });
+      console.log("[RUBRIC] Niche discovery response:", data);
+      if (data.error) {
+        alert("Niche discovery error: " + data.error);
+        setNicheLoading(false);
+        return;
+      }
+      setNicheResults(data.niches);
+    } catch (err) {
+      console.error("[RUBRIC] Niche discovery failed:", err);
+      alert("Niche discovery failed: " + err.message);
+    }
     setNicheLoading(false);
   };
   const selectNiche = (niche) => {
@@ -263,8 +274,19 @@ export default function YouTubeFactoryTab({ channels }) {
     if (!topicNiche) return;
     setTopicLoading(true);
     setTopicResults(null);
-    const data = await api("orchestrator", { action: "topic-generate", niche: topicNiche, count: 10 });
-    setTopicResults(data.topics);
+    try {
+      const data = await api("orchestrator", { action: "topic-generate", niche: topicNiche, count: 10 });
+      console.log("[RUBRIC] Topic generation response:", data);
+      if (data.error) {
+        alert("Topic generation error: " + data.error);
+        setTopicLoading(false);
+        return;
+      }
+      setTopicResults(data.topics);
+    } catch (err) {
+      console.error("[RUBRIC] Topic generation failed:", err);
+      alert("Topic generation failed: " + err.message);
+    }
     setTopicLoading(false);
   };
   const selectTopicAndCreate = async (topic) => {
