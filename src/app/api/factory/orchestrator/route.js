@@ -99,15 +99,37 @@ Return JSON (no markdown fences):
 
       const result = await model.generateContent({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: 4096, temperature: 0.6 },
+        generationConfig: { maxOutputTokens: 8192, temperature: 0.6, responseMimeType: "application/json" },
       });
 
       let text = result.response.text().trim();
-      text = text.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+      // Strip markdown fences aggressively
+      text = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
 
       let data;
-      try { data = JSON.parse(text); }
-      catch { data = { raw: text }; }
+      try {
+        data = JSON.parse(text);
+      } catch {
+        // Try to repair truncated JSON by closing open brackets
+        let repaired = text;
+        const openBraces = (repaired.match(/{/g) || []).length;
+        const closeBraces = (repaired.match(/}/g) || []).length;
+        const openBrackets = (repaired.match(/\[/g) || []).length;
+        const closeBrackets = (repaired.match(/]/g) || []).length;
+        // Remove trailing comma
+        repaired = repaired.replace(/,\s*$/, "");
+        // Close any unclosed strings
+        const quoteCount = (repaired.match(/(?<!\\)"/g) || []).length;
+        if (quoteCount % 2 !== 0) repaired += '"';
+        // Close brackets/braces
+        for (let i = 0; i < openBrackets - closeBrackets; i++) repaired += "]";
+        for (let i = 0; i < openBraces - closeBraces; i++) repaired += "}";
+        try {
+          data = JSON.parse(repaired);
+        } catch {
+          data = { raw: text };
+        }
+      }
 
       // Store in knowledge base (non-blocking — don't crash if it fails)
       try {
@@ -159,15 +181,29 @@ Return JSON (no markdown fences):
 
       const result = await model.generateContent({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: 4096, temperature: 0.7 },
+        generationConfig: { maxOutputTokens: 8192, temperature: 0.7, responseMimeType: "application/json" },
       });
 
       let text = result.response.text().trim();
-      text = text.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+      text = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
 
       let data;
-      try { data = JSON.parse(text); }
-      catch { data = { raw: text }; }
+      try {
+        data = JSON.parse(text);
+      } catch {
+        let repaired = text;
+        const ob = (repaired.match(/{/g) || []).length;
+        const cb = (repaired.match(/}/g) || []).length;
+        const obk = (repaired.match(/\[/g) || []).length;
+        const cbk = (repaired.match(/]/g) || []).length;
+        repaired = repaired.replace(/,\s*$/, "");
+        const qc = (repaired.match(/(?<!\\)"/g) || []).length;
+        if (qc % 2 !== 0) repaired += '"';
+        for (let i = 0; i < obk - cbk; i++) repaired += "]";
+        for (let i = 0; i < ob - cb; i++) repaired += "}";
+        try { data = JSON.parse(repaired); }
+        catch { data = { raw: text }; }
+      }
 
       return Response.json({ topics: data });
     }

@@ -258,7 +258,13 @@ export default function YouTubeFactoryTab({ channels }) {
         setNicheLoading(false);
         return;
       }
-      setNicheResults(data.niches);
+      // Handle both { niches: [...] } and { raw: "..." } responses
+      const niches = data.niches;
+      if (niches?.raw) {
+        alert("AI returned malformed data. Retrying may fix this. Check console for raw output.");
+        console.log("[RUBRIC] Raw response:", niches.raw);
+      }
+      setNicheResults(niches);
     } catch (err) {
       console.error("[RUBRIC] Niche discovery failed:", err);
       alert("Niche discovery failed: " + err.message);
@@ -282,7 +288,12 @@ export default function YouTubeFactoryTab({ channels }) {
         setTopicLoading(false);
         return;
       }
-      setTopicResults(data.topics);
+      const topics = data.topics;
+      if (topics?.raw) {
+        alert("AI returned malformed topic data. Try again.");
+        console.log("[RUBRIC] Raw response:", topics.raw);
+      }
+      setTopicResults(topics);
     } catch (err) {
       console.error("[RUBRIC] Topic generation failed:", err);
       alert("Topic generation failed: " + err.message);
