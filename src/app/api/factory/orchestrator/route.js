@@ -39,9 +39,11 @@ export async function POST(req) {
     if (!userId) return Response.json({ error: "userId required" }, { status: 400 });
 
     const db = getDb();
-    const baseUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : process.env.NEXTAUTH_URL || "http://localhost:3000";
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL
+      || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : null)
+      || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+      || process.env.NEXTAUTH_URL
+      || "http://localhost:3000";
 
     /* ── Helper: call internal factory APIs ── */
     async function callFactory(route, payload) {
