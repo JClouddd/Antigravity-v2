@@ -197,15 +197,32 @@ Return JSON (no markdown fences):
             return Response.json({ error: scriptResult.error, step: currentStep }, { status: 500 });
           }
 
+          // Auto-generate the Production Blueprint timeline from the script
+          let blueprint = null;
+          let blueprintCost = 0;
+          try {
+            const bpResult = await callFactory("generate", {
+              action: "blueprint",
+              script: scriptResult.script,
+              videoTier: pipeData.videoTier,
+            });
+            blueprint = bpResult.blueprint;
+            blueprintCost = bpResult.cost || 0;
+          } catch { /* blueprint is optional — pipeline continues without it */ }
+
           await callFactory("pipeline", {
             action: "advance",
             pipelineId,
-            assetUpdates: { script: scriptResult.script },
-            costUpdate: { type: "script", amount: scriptResult.cost || 0 },
+            assetUpdates: {
+              script: scriptResult.script,
+              blueprint: blueprint,
+            },
+            costUpdate: { type: "script", amount: (scriptResult.cost || 0) + blueprintCost },
           });
 
           results.script = scriptResult.script;
-          results.cost = scriptResult.cost;
+          results.blueprint = blueprint ? "generated" : "skipped";
+          results.cost = (scriptResult.cost || 0) + blueprintCost;
           break;
         }
 
@@ -232,10 +249,12 @@ Return JSON (no markdown fences):
             scenes: script.scenes,
           });
 
-          // Also generate background music
+          // Use blueprint music plan if available, otherwise generic prompt
+          const musicPlan = pipeData.assets?.blueprint?.assetManifest?.musicPrompt
+            || script.musicPlan?.prompt;
           const musicResult = await callFactory("generate", {
             action: "music",
-            prompt: `Background music for a ${pipeData.niche || "general"} YouTube video. ${pipeData.tone || "Calm"}, no vocals, ambient.`,
+            prompt: musicPlan || `Background music for a ${pipeData.niche || "general"} YouTube video. ${pipeData.tone || "Calm"}, no vocals, ambient.`,
           });
 
           const totalCost = (ttsResult.cost || 0) + (srtResult.cost || 0) + (musicResult.cost || 0);
@@ -264,12 +283,18 @@ Return JSON (no markdown fences):
           }
 
           const tier = pipeData.videoTier || "standard";
+          const blueprint = pipeData.assets?.blueprint;
           const sceneImages = [];
           const sceneVideos = [];
           let totalCost = 0;
 
           for (const scene of script.scenes) {
-            // Generate image for each scene
+            // Check blueprint for per-scene visual type decision
+            const bpVisualType = scene.visualType;
+            const shouldGenerateVideo = bpVisualType === "video_clip"
+              || (tier === "premium" || tier === "cinematic");
+
+            // Generate image for every scene (used as fallback or thumbnail)
             const imgResult = await callFactory("generate", {
               action: "image",
               prompt: scene.imagePrompt || scene.visualDescription,
@@ -279,7 +304,6 @@ Return JSON (no markdown fences):
               sceneImages.push(imgResult.imageUrl);
               totalCost += imgResult.cost || 0;
 
-              // Save to asset gallery
               await callFactory("assets", {
                 action: "save",
                 url: imgResult.imageUrl,
@@ -287,17 +311,21 @@ Return JSON (no markdown fences):
                 prompt: scene.imagePrompt || scene.visualDescription,
                 model: imgResult.model,
                 pipelineId,
+                metadata: {
+                  tags: [scene.section, `scene_${scene.sceneNumber}`],
+                  style: scene.cameraMove || "",
+                },
               });
             }
 
-            // For premium/cinematic tiers, also generate video clips
-            if (tier === "premium" || tier === "cinematic") {
+            // Generate video clip based on blueprint visual type or tier
+            if (shouldGenerateVideo) {
               const vidResult = await callFactory("generate", {
                 action: "video",
                 prompt: scene.videoPrompt || scene.visualDescription,
                 imageUrl: imgResult.imageUrl,
                 tier,
-                duration: 5,
+                duration: scene.estimatedDuration ? Math.min(scene.estimatedDuration, 10) : 5,
               });
 
               if (vidResult.videoUrl) {
@@ -311,15 +339,19 @@ Return JSON (no markdown fences):
                   prompt: scene.videoPrompt || scene.visualDescription,
                   model: vidResult.model,
                   pipelineId,
+                  metadata: {
+                    tags: [scene.section, `scene_${scene.sceneNumber}`],
+                  },
                 });
               }
             }
           }
 
-          // Generate thumbnail
+          // Generate thumbnail using blueprint's thumbnail plan
+          const thumbPlan = script.thumbnailPlan;
           const thumbResult = await callFactory("generate", {
             action: "thumbnail",
-            prompt: script.thumbnailPrompt || `${pipeData.topic} YouTube thumbnail`,
+            prompt: thumbPlan?.prompt || script.thumbnailPrompt || `${pipeData.topic} YouTube thumbnail`,
           });
 
           if (thumbResult.imageUrl) {

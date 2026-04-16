@@ -116,7 +116,7 @@ export async function POST(req) {
       });
     }
 
-    /* ── SCRIPT GENERATION ── */
+    /* ── SCRIPT + PRODUCTION BLUEPRINT ── */
     if (action === "script") {
       if (!GEMINI_KEY) return Response.json({ error: "GEMINI_API_KEY not configured" }, { status: 500 });
 
@@ -125,7 +125,7 @@ export async function POST(req) {
 
       const genAI = new GoogleGenerativeAI(GEMINI_KEY);
 
-      const prompt = `You are a YouTube script writer. Write a complete narration script for a ${duration || "8-10 minute"} YouTube video.
+      const prompt = `You are a YouTube production director. Create a COMPLETE Production Blueprint for a ${duration || "8-10 minute"} YouTube video. This is not just a script — it's a unified plan coordinating every second of narration, visuals, audio, transitions, and camera.
 
 Topic: ${topic}
 ${niche ? `Niche: ${niche}` : ""}
@@ -135,30 +135,96 @@ ${channelName ? `Channel: ${channelName}` : ""}
 
 Return JSON (no markdown fences):
 {
-  "title": "Video title (SEO optimized)",
-  "description": "YouTube description (300+ words, keywords, links, timestamps)",
-  "tags": ["tag1", "tag2", ...],
+  "title": "Video title (SEO optimized, curiosity-driving, 60 chars max)",
+  "description": "YouTube description (300+ words with SEO keywords, timestamps, hashtags, CTA)",
+  "tags": ["tag1", "tag2", "tag3", "...15-30 tags"],
+  "hookLine": "Opening hook (first 5 seconds — must stop the scroll)",
+
   "scenes": [
     {
       "sceneNumber": 1,
-      "narration": "Exact text the narrator will say for this scene",
-      "visualDescription": "Detailed description of what should appear on screen",
-      "duration": "estimated seconds for this scene",
-      "imagePrompt": "Prompt for generating the visual with AI (be specific about composition, style, mood)",
-      "videoPrompt": "Prompt for generating a motion video clip (if applicable)"
+      "section": "hook|intro|body|climax|outro|cta",
+      "narration": "Exact narrator text. Write naturally — contractions, emphasis, pauses marked with (pause).",
+      "narrationWordCount": 45,
+      "estimatedDuration": 20,
+
+      "visualType": "image|video_clip|text_overlay|split_screen|montage",
+      "visualDescription": "Precise description of what appears on screen during this narration",
+      "imagePrompt": "Detailed AI image prompt (style, mood, composition, colors, subject placement)",
+      "videoPrompt": "AI video clip prompt (action, camera move, atmosphere). Null if visualType is 'image'.",
+      "cameraMove": "static|slow_zoom_in|slow_zoom_out|pan_left|pan_right|tracking|parallax",
+
+      "transition": {
+        "type": "cut|fade|dissolve|zoom|swipe|morph|none",
+        "duration": 0.5,
+        "toNext": "How this scene connects visually to the next"
+      },
+
+      "audio": {
+        "musicMood": "dramatic|calm|upbeat|tense|inspiring|minimal|none",
+        "musicIntensity": 0.15,
+        "sfx": ["whoosh", "impact"] ,
+        "voiceEmotion": "neutral|excited|serious|warm|urgent|curious"
+      },
+
+      "textOverlay": {
+        "text": "On-screen text (if any)",
+        "style": "title|subtitle|stat|quote|callout|none",
+        "position": "center|lower_third|top|left|right"
+      },
+
+      "retentionNote": "Why this scene keeps viewers engaged (for self-learning analysis)"
     }
   ],
+
+  "timeline": {
+    "totalDuration": "total seconds",
+    "sectionBreakdown": {
+      "hook": "0:00-0:08",
+      "intro": "0:08-0:45",
+      "body": "0:45-7:00",
+      "climax": "7:00-8:30",
+      "outro": "8:30-9:15",
+      "cta": "9:15-9:30"
+    }
+  },
+
   "chapters": [
-    { "timestamp": "0:00", "title": "Introduction" },
-    ...
+    { "timestamp": "0:00", "title": "Introduction" }
   ],
-  "category": "YouTube category (e.g. Entertainment, Education, Sports)",
-  "estimatedDuration": "total minutes",
-  "thumbnailPrompt": "Detailed prompt for generating thumbnail image",
-  "hookLine": "Opening hook to grab attention in first 5 seconds"
+
+  "musicPlan": {
+    "style": "Overall music style description",
+    "prompt": "AI music generation prompt for background track",
+    "keyMoments": [
+      { "at": "0:00", "action": "Fade in ambient" },
+      { "at": "2:30", "action": "Build tension" },
+      { "at": "7:00", "action": "Climax swell" },
+      { "at": "9:00", "action": "Fade to gentle outro" }
+    ]
+  },
+
+  "thumbnailPlan": {
+    "concept": "What the thumbnail should show",
+    "prompt": "Detailed AI generation prompt — subject, composition, colors, text placement",
+    "textOnThumbnail": "Bold text to overlay (2-5 words)",
+    "emotionTarget": "curiosity|shock|excitement|awe"
+  },
+
+  "category": "YouTube category",
+  "playlistSuggestion": "Which playlist this belongs in",
+
+  "selfLearningMeta": {
+    "targetAudience": "Who this is for",
+    "retentionStrategy": "How scenes are designed to hold attention",
+    "clickThroughStrategy": "Why the title/thumbnail combo works",
+    "differentiator": "What makes this video unique vs competitors",
+    "expectedPerformance": "low|medium|high|viral",
+    "riskFactors": ["potential weakness 1"]
+  }
 }
 
-Write 8-15 scenes. Each scene should have 30-60 seconds of narration. Be specific in visual descriptions.`;
+Write 8-15 scenes. Each scene: 15-60 seconds. Total: ${duration || "8-10"} minute video. Be highly specific in ALL prompts — these will be fed directly to AI generators.`;
 
       let lastError = null;
       for (const modelName of FALLBACK_MODELS) {
@@ -166,7 +232,7 @@ Write 8-15 scenes. Each scene should have 30-60 seconds of narration. Be specifi
           const model = genAI.getGenerativeModel({ model: modelName });
           const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: 8192, temperature: 0.7 },
+            generationConfig: { maxOutputTokens: 16384, temperature: 0.7 },
           });
 
           let text = result.response.text().trim();
@@ -191,6 +257,94 @@ Write 8-15 scenes. Each scene should have 30-60 seconds of narration. Be specifi
         }
       }
       return Response.json({ error: lastError?.message || "All models exhausted" }, { status: 429 });
+    }
+
+    /* ── BLUEPRINT — generate master timeline from existing script ── */
+    if (action === "blueprint") {
+      if (!GEMINI_KEY) return Response.json({ error: "GEMINI_API_KEY not configured" }, { status: 500 });
+
+      const { script, videoTier } = body;
+      if (!script?.scenes) return Response.json({ error: "script with scenes required" }, { status: 400 });
+
+      const genAI = new GoogleGenerativeAI(GEMINI_KEY);
+      const prompt = `Convert this video script into a second-by-second production timeline. This timeline will be used by an FFmpeg compositor to assemble the final video.
+
+Video Tier: ${videoTier || "standard"} (determines whether scenes get generated video clips or just Ken Burns images)
+
+Script: ${JSON.stringify(script, null, 2)}
+
+Return JSON (no markdown fences):
+{
+  "timeline": [
+    {
+      "startTime": 0.0,
+      "endTime": 15.5,
+      "sceneNumber": 1,
+      "layer": "visual",
+      "source": "image|video_clip",
+      "prompt": "The exact generation prompt for this visual",
+      "cameraMove": "slow_zoom_in",
+      "transition": { "in": "fade", "out": "dissolve", "duration": 0.5 }
+    },
+    {
+      "startTime": 0.0,
+      "endTime": 15.5,
+      "sceneNumber": 1,
+      "layer": "narration",
+      "text": "The narrator text for this segment",
+      "emotion": "warm"
+    },
+    {
+      "startTime": 0.0,
+      "endTime": 15.5,
+      "sceneNumber": 1,
+      "layer": "music",
+      "intensity": 0.15,
+      "mood": "ambient"
+    },
+    {
+      "startTime": 3.0,
+      "endTime": 8.0,
+      "sceneNumber": 1,
+      "layer": "text_overlay",
+      "text": "On screen text",
+      "style": "title",
+      "position": "center"
+    }
+  ],
+  "totalDuration": 540,
+  "assetManifest": {
+    "images": ["List of all image prompts needed"],
+    "videoClips": ["List of all video clip prompts needed"],
+    "narrationSegments": ["List of narration texts in order"],
+    "musicPrompt": "Single prompt for the background music track"
+  },
+  "compositorInstructions": {
+    "resolution": "1920x1080",
+    "fps": 30,
+    "codec": "h264",
+    "audioMix": { "narration": 1.0, "music": 0.15, "sfx": 0.3 }
+  }
+}`;
+
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: 16384, temperature: 0.2 },
+      });
+
+      let text = result.response.text().trim();
+      text = text.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+
+      let blueprint;
+      try { blueprint = JSON.parse(text); }
+      catch { blueprint = { raw: text }; }
+
+      const usage = result.response.usageMetadata;
+      const cost = ((usage?.promptTokenCount || 0) / 1e6 * 0.15) + ((usage?.candidatesTokenCount || 0) / 1e6 * 0.60);
+      await logCost("blueprint", "gemini-2.5-flash", cost);
+
+      return Response.json({ blueprint, cost: Number(cost.toFixed(4)) });
     }
 
     /* ── TTS (Text to Speech) ── */
