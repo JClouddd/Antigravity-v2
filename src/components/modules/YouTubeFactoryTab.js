@@ -324,66 +324,229 @@ export default function YouTubeFactoryTab({ channels }) {
   const selectTopicAndCreate = async (topic) => {
     setSelectedTopic(topic);
     setWizardStep(5);
-    // Auto-create pipeline
-    const data = await api("pipeline", {
-      action: "create",
-      topic: topic.title,
-      niche: topicNiche,
-      videoTier: wizardTier,
-      channelName: channels?.[0]?.title || "",
-      channelId: channels?.[0]?.id || "",
-      reviewRequired: true,
-    });
-    if (data.pipelineId) {
-      setWizardPipelineId(data.pipelineId);
-      await loadPipelines();
+    try {
+      const data = await api("pipeline", {
+        action: "create",
+        topic: topic.title,
+        niche: topicNiche,
+        videoTier: wizardTier,
+        channelName: channels?.[0]?.title || "",
+        channelId: channels?.[0]?.id || "",
+        reviewRequired: true,
+      });
+      if (data.error) {
+        alert(`Pipeline creation failed: ${data.error}`);
+        setWizardStep(4); // Go back
+        return;
+      }
+      if (data.pipelineId) {
+        setWizardPipelineId(data.pipelineId);
+        await loadPipelines();
+      }
+    } catch (err) {
+      alert(`Pipeline creation failed: ${err.message}`);
+      setWizardStep(4);
     }
   };
   const [currentStepLabel, setCurrentStepLabel] = useState("");
+
+  // Map pipeline state → next action
+  const getNextAction = (state) => {
+    const map = {
+      NICHE_SELECTED: "generate_script",
+      SCRIPT_GENERATED: "generate_voice",
+      ASSETS_GENERATING: "generate_visuals",
+      ASSETS_READY: "compose",
+    };
+    return map[state] || null;
+  };
+
   const runFullPipeline = async (pipelineId) => {
     setAutoRunning(true);
     setAutoResults(null);
-    setCurrentStepLabel("Initializing pipeline...");
+    setCurrentStepLabel("Checking pipeline status...");
     const pid = pipelineId || wizardPipelineId;
     const allResults = {};
     let finalData = null;
 
     const stepLabels = {
-      generate_script: "✍️ Writing script with AI...",
-      generate_voice: "🎙️ Generating voice & music...",
-      generate_visuals: "🎨 Creating images & video...",
+      generate_script: "✍️ Writing script with AI (~60s)...",
+      generate_voice: "🎙️ Generating voice narration...",
+      generate_music: "🎵 Creating background music...",
+      generate_subtitles: "📝 Generating subtitles...",
+      generate_visuals: "🎨 Creating scene images...",
       compose: "🎬 Composing final video...",
+      advance: "📊 Updating pipeline...",
     };
 
-    // Drive pipeline step-by-step from the UI
-    for (let i = 0; i < 10; i++) {
-      try {
-        const data = await api("orchestrator", { action: "run-full", pipelineId: pid });
-        console.log(`[RUBRIC] Step ${i + 1}:`, data.stepExecuted, data);
+    try {
+      // Execute up to 30 micro-steps (images are per-scene)
+      for (let i = 0; i < 30; i++) {
+        // 1. Check pipeline status
+        const status = await api("pipeline", { action: "status", pipelineId: pid });
+        if (status.error) { finalData = { error: status.error }; break; }
 
-        if (data.stepExecuted) {
-          allResults[data.stepExecuted] = { ...data.results, cost: data.totalCost };
-          // Show incremental progress
-          setAutoResults({
-            ...data,
-            results: { ...allResults },
-            completed: false,
-          });
-          setCurrentStepLabel(`✅ ${data.stepExecuted.replace(/_/g, " ")} done`);
-        }
-        finalData = data;
+        const nextAction = getNextAction(status.state);
+        console.log(`[RUBRIC] Step ${i + 1}: state=${status.state}, next=${nextAction}`);
 
-        if (data.completed || data.error || !data.nextStep) {
+        // Pipeline complete or no more steps
+        if (!nextAction || status.state === "COMPLETE" || status.state === "COMPOSED" || status.state === "PUBLISHED") {
+          finalData = { completed: true, state: status.state, progress: status.progress || 100, totalCost: status.totalCost || 0 };
           break;
         }
 
-        // Show label for next step
-        setCurrentStepLabel(stepLabels[data.nextStep] || `Running ${data.nextStep}...`);
-      } catch (err) {
-        console.error("[RUBRIC] Pipeline step failed:", err);
-        finalData = { error: err.message, completed: false };
-        break;
+        // Update progress display
+        setAutoResults({ state: status.state, progress: status.progress, totalCost: status.totalCost, results: { ...allResults }, completed: false });
+
+        // 2. Execute the next action DIRECTLY (no orchestrator middleman)
+        switch (nextAction) {
+          case "generate_script": {
+            setCurrentStepLabel(stepLabels.generate_script);
+            const scriptData = await api("generate", {
+              action: "script",
+              topic: status.topic,
+              niche: status.niche,
+              tone: status.tone,
+              duration: status.targetDuration,
+              style: status.style,
+              channelName: status.channelName,
+              pipelineId: pid,
+            });
+            if (scriptData.error) { finalData = { error: `Script: ${scriptData.error}` }; break; }
+
+            // Advance pipeline
+            setCurrentStepLabel(stepLabels.advance);
+            await api("pipeline", {
+              action: "advance", pipelineId: pid,
+              assetUpdates: { script: scriptData.script },
+              costUpdate: { type: "script", amount: scriptData.cost || 0 },
+            });
+            allResults.generate_script = { script: "generated", cost: scriptData.cost || 0 };
+            setCurrentStepLabel("✅ Script generated");
+            continue;
+          }
+
+          case "generate_voice": {
+            // TTS
+            setCurrentStepLabel(stepLabels.generate_voice);
+            const script = status.assets?.script;
+            if (!script?.scenes) { finalData = { error: "No script found" }; break; }
+
+            const narration = script.scenes.map(s => s.narration).join("\n\n");
+            const ttsData = await api("generate", { action: "tts", text: narration, pipelineId: pid });
+            if (ttsData.error) { finalData = { error: `TTS: ${ttsData.error}` }; break; }
+
+            // Subtitles (non-fatal)
+            setCurrentStepLabel(stepLabels.generate_subtitles);
+            let srt = null;
+            try {
+              const srtData = await api("generate", { action: "subtitles", scenes: script.scenes, pipelineId: pid });
+              srt = srtData.srt || null;
+            } catch { /* skip */ }
+
+            // Music (non-fatal)
+            setCurrentStepLabel(stepLabels.generate_music);
+            let musicUrl = null;
+            let musicCost = 0;
+            try {
+              const musicData = await api("generate", {
+                action: "music", pipelineId: pid,
+                prompt: script.musicPlan?.prompt || `Background music for ${status.niche || "general"} video. Calm, no vocals.`,
+              });
+              musicUrl = musicData.audioUrl || null;
+              musicCost = musicData.cost || 0;
+            } catch { /* skip */ }
+
+            // Advance pipeline
+            setCurrentStepLabel(stepLabels.advance);
+            const totalAudioCost = (ttsData.cost || 0) + musicCost;
+            await api("pipeline", {
+              action: "advance", pipelineId: pid,
+              assetUpdates: { voiceUrl: ttsData.audioUrl, subtitlesSrt: srt, musicUrl },
+              costUpdate: { type: "audio", amount: totalAudioCost },
+            });
+            allResults.generate_voice = { voice: "generated", music: musicUrl ? "generated" : "skipped", cost: totalAudioCost };
+            setCurrentStepLabel("✅ Audio generated");
+            continue;
+          }
+
+          case "generate_visuals": {
+            const script = status.assets?.script;
+            if (!script?.scenes) { finalData = { error: "No script found" }; break; }
+
+            const existingImages = status.assets?.sceneImages || [];
+            const startIndex = existingImages.length;
+
+            if (startIndex < script.scenes.length) {
+              // Generate ONE image per loop iteration to avoid timeout
+              const scene = script.scenes[startIndex];
+              setCurrentStepLabel(`🎨 Image ${startIndex + 1}/${script.scenes.length}: ${scene.section || "scene"}...`);
+
+              const imgData = await api("generate", {
+                action: "image", pipelineId: pid,
+                prompt: scene.imagePrompt || scene.visualDescription || `Scene for ${status.topic}`,
+              });
+
+              if (imgData.imageUrl) {
+                existingImages.push(imgData.imageUrl);
+                // Save incrementally WITHOUT advancing state
+                await api("pipeline", {
+                  action: "update-assets", pipelineId: pid,
+                  assetUpdates: { sceneImages: existingImages },
+                  costUpdate: { type: "visuals", amount: imgData.cost || 0 },
+                });
+              }
+
+              allResults.generate_visuals = { images: existingImages.length, total: script.scenes.length, cost: imgData.cost || 0 };
+
+              if (existingImages.length < script.scenes.length) {
+                setCurrentStepLabel(`✅ Image ${existingImages.length}/${script.scenes.length} done`);
+                continue; // Loop back — status will still be ASSETS_GENERATING
+              }
+            }
+
+            // All images done — generate thumbnail
+            setCurrentStepLabel("🖼️ Creating thumbnail...");
+            const thumbData = await api("generate", {
+              action: "thumbnail", pipelineId: pid,
+              prompt: script.thumbnailPlan?.prompt || `${status.topic} YouTube thumbnail`,
+            });
+
+            // NOW advance: ASSETS_GENERATING → ASSETS_READY (one single advance)
+            await api("pipeline", {
+              action: "advance", pipelineId: pid,
+              assetUpdates: { sceneImages: existingImages, thumbnailUrl: thumbData.imageUrl || null },
+              costUpdate: { type: "visuals", amount: thumbData.cost || 0 },
+            });
+            allResults.generate_visuals = { images: existingImages.length, thumbnail: thumbData.imageUrl ? "generated" : "skipped" };
+            setCurrentStepLabel("✅ Visuals generated");
+            continue;
+          }
+
+          case "compose": {
+            setCurrentStepLabel(stepLabels.compose);
+            const composeData = await api("compose", { action: "trigger", pipelineId: pid });
+            allResults.compose = composeData;
+            // Compose may be queued (Cloud Run) — don't wait
+            if (composeData.status === "queued") {
+              finalData = { completed: false, state: "COMPOSITING", progress: 80, totalCost: status.totalCost, results: allResults, error: composeData.message };
+            } else {
+              finalData = { completed: true, state: "COMPOSED", progress: 90, totalCost: status.totalCost, results: allResults };
+            }
+            break;
+          }
+
+          default:
+            finalData = { error: `Unknown pipeline state: ${status.state}`, state: status.state };
+            break;
+        }
+
+        // If finalData was set (break was hit), exit loop
+        if (finalData) break;
       }
+    } catch (err) {
+      console.error("[RUBRIC] Pipeline execution error:", err);
+      finalData = { error: `Pipeline error: ${err.message}`, completed: false };
     }
 
     if (finalData) {

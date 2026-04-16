@@ -181,6 +181,30 @@ export async function POST(req) {
       });
     }
 
+    /* ── UPDATE ASSETS without advancing state ── */
+    if (action === "update-assets") {
+      const { pipelineId, assetUpdates, costUpdate } = body;
+      if (!pipelineId) return Response.json({ error: "pipelineId required" }, { status: 400 });
+
+      const update = { updatedAt: new Date().toISOString() };
+
+      if (assetUpdates) {
+        for (const [key, value] of Object.entries(assetUpdates)) {
+          update[`assets.${key}`] = value;
+        }
+      }
+
+      if (costUpdate) {
+        update.totalCost = FieldValue.increment(costUpdate.amount || 0);
+        if (costUpdate.type) {
+          update[`costBreakdown.${costUpdate.type}`] = FieldValue.increment(costUpdate.amount || 0);
+        }
+      }
+
+      await pipesRef.doc(pipelineId).update(update);
+      return Response.json({ pipelineId, updated: true });
+    }
+
     /* ── CANCEL a pipeline ── */
     if (action === "cancel") {
       const { pipelineId } = body;

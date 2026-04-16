@@ -1,6 +1,7 @@
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 /**
  * POST /api/factory/storage

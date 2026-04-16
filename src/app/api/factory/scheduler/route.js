@@ -2,6 +2,7 @@ import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 function getDb() {
   if (!getApps().length) {
