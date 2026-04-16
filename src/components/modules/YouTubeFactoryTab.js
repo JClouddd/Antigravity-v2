@@ -118,12 +118,33 @@ export default function YouTubeFactoryTab({ channels }) {
 
   /* ── API Helpers ── */
   const api = async (route, body) => {
-    const res = await fetch(`/api/factory/${route}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: user?.uid, ...body }),
-    });
-    return res.json();
+    try {
+      const res = await fetch(`/api/factory/${route}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user?.uid, ...body }),
+      });
+
+      // Get raw text first — never call res.json() directly
+      const text = await res.text();
+
+      // Handle empty responses
+      if (!text || text.trim() === "") {
+        console.error(`[API] ${route} returned empty response (${res.status})`);
+        return { error: `${route} returned empty response (HTTP ${res.status})` };
+      }
+
+      // Try to parse as JSON
+      try {
+        return JSON.parse(text);
+      } catch {
+        console.error(`[API] ${route} returned non-JSON (${res.status}):`, text.slice(0, 300));
+        return { error: `${route} returned HTTP ${res.status}: ${text.slice(0, 100)}` };
+      }
+    } catch (err) {
+      console.error(`[API] ${route} network error:`, err);
+      return { error: `Network error calling ${route}: ${err.message}` };
+    }
   };
 
   /* ── Pipeline Actions ── */

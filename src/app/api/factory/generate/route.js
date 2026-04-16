@@ -244,11 +244,11 @@ Write 8-15 scenes. Each scene: 15-60 seconds. Total: ${duration || "8-10"} minut
           const model = genAI.getGenerativeModel({ model: modelName });
           const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: 16384, temperature: 0.7 },
+            generationConfig: { maxOutputTokens: 16384, temperature: 0.7, responseMimeType: "application/json" },
           });
 
           let text = result.response.text().trim();
-          text = text.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+          text = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
 
           const usage = result.response.usageMetadata;
           const inputTokens = usage?.promptTokenCount || 0;
@@ -256,8 +256,20 @@ Write 8-15 scenes. Each scene: 15-60 seconds. Total: ${duration || "8-10"} minut
           const cost = (inputTokens / 1e6 * 0.15) + (outputTokens / 1e6 * 0.60);
 
           let data;
-          try { data = JSON.parse(text); }
-          catch { data = { raw: text }; }
+          try {
+            data = JSON.parse(text);
+          } catch {
+            // Repair truncated JSON
+            let r = text.replace(/,\s*$/, "");
+            const qc = (r.match(/(?<!\\)"/g) || []).length;
+            if (qc % 2 !== 0) r += '"';
+            const ob = (r.match(/{/g) || []).length - (r.match(/}/g) || []).length;
+            const obk = (r.match(/\[/g) || []).length - (r.match(/]/g) || []).length;
+            for (let i = 0; i < obk; i++) r += "]";
+            for (let i = 0; i < ob; i++) r += "}";
+            try { data = JSON.parse(r); }
+            catch { data = { raw: text.slice(0, 500), parseError: true }; }
+          }
 
           await logCost("script", modelName, cost, { topic, inputTokens, outputTokens });
 
